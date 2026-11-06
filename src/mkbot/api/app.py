@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
@@ -21,6 +21,7 @@ from mkbot.domain.models import (
     SleepRequest,
     StrictModel,
 )
+from mkbot.memory.contracts import ManualMemory, MemoryEdit, MemorySettings
 from mkbot.models.contracts import GatewaySettings
 from mkbot.runtime.agent import ExecutionSettings
 from mkbot.runtime.clock import Clock
@@ -56,6 +57,21 @@ class BudgetLimit(StrictModel):
     scope: str = Field(min_length=1, max_length=120)
     metric: str = Field(min_length=1, max_length=80)
     limit: int = Field(ge=0)
+
+
+class MemoryQuery(StrictModel):
+    audience: str = Field(min_length=1, max_length=200)
+    query: str = Field(default="", max_length=1000)
+    subjects: list[str] | None = Field(default=None, max_length=20)
+
+
+class ProfileQuery(StrictModel):
+    subject: str = Field(min_length=1, max_length=250)
+    audience: str = Field(min_length=1, max_length=200)
+
+
+class MemoryForget(StrictModel):
+    expected_revision: int = Field(ge=1)
 
 
 def create_app(data_dir: Path, token: str, *, clock: Clock | None = None) -> FastAPI:
@@ -187,6 +203,49 @@ def create_app(data_dir: Path, token: str, *, clock: Clock | None = None) -> Fas
     async def plugins(k: KernelDependency):
         return k.plugins.catalog()
 
+    @app.get("/api/memory")
+    async def memories(
+        k: KernelDependency,
+        limit: int = Query(default=100, ge=1, le=500),
+        offset: int = Query(default=0, ge=0),
+        subject: str | None = None,
+        tier: Literal["recent", "long", "archived"] | None = None,
+        status: Literal["active", "superseded", "forgotten"] | None = None,
+    ):
+        return k.memory.list(limit, offset=offset, subject=subject, tier=tier, status=status)
+
+    @app.post("/api/memory", status_code=201)
+    async def create_memory(request: ManualMemory, k: KernelDependency):
+        return k.memory.create_manual(request)
+
+    @app.post("/api/memory/search")
+    async def search_memories(request: MemoryQuery, k: KernelDependency):
+        return k.memory.search(**request.model_dump())
+
+    @app.post("/api/memory/profile")
+    async def memory_profile(request: ProfileQuery, k: KernelDependency):
+        return k.memory.profile(request.subject, request.audience)
+
+    @app.get("/api/memory/{memory_id}")
+    async def memory_detail(memory_id: str, k: KernelDependency):
+        return k.memory.get(memory_id)
+
+    @app.get("/api/memory/{memory_id}/history")
+    async def memory_history(memory_id: str, k: KernelDependency):
+        return k.memory.history(memory_id)
+
+    @app.get("/api/memory/{memory_id}/forget-preview")
+    async def memory_forget_preview(memory_id: str, k: KernelDependency):
+        return k.memory.forget_preview(memory_id)
+
+    @app.put("/api/memory/{memory_id}")
+    async def edit_memory(memory_id: str, request: MemoryEdit, k: KernelDependency):
+        return k.memory.revise(memory_id, request)
+
+    @app.post("/api/memory/{memory_id}/forget")
+    async def forget_memory(memory_id: str, request: MemoryForget, k: KernelDependency):
+        return k.memory.forget(memory_id, request.expected_revision)
+
     @app.post("/api/activities", status_code=201)
     async def create_activity(request: ActivityRequest, k: KernelDependency):
         result = k.activities.create(request)
@@ -252,6 +311,8 @@ def create_app(data_dir: Path, token: str, *, clock: Clock | None = None) -> Fas
             request.content = ExecutionSettings.model_validate(request.content).model_dump(
                 mode="json"
             )
+        if name == "memory":
+            request.content = MemorySettings.model_validate(request.content).model_dump(mode="json")
         return k.config.put(name, request.content, request.expected_revision)
 
     @app.get("/api/model-calls")

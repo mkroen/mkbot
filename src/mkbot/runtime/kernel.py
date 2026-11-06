@@ -7,8 +7,11 @@ from pathlib import Path
 from mkbot.accounting.budgets import BudgetManager
 from mkbot.actions.outbox import Outbox
 from mkbot.domain.errors import NotFound
+from mkbot.memory.contracts import MemorySettings
+from mkbot.memory.service import MemoryService
 from mkbot.models.contracts import GatewaySettings
 from mkbot.models.gateway import ModelGateway
+from mkbot.plugins.memory import memory_plugin
 from mkbot.plugins.notebook import notebook_plugin
 from mkbot.plugins.registry import PluginRegistry
 from mkbot.runtime.activities import ActivityService
@@ -56,9 +59,20 @@ class Kernel:
             except NotFound:
                 self.config.put("execution", ExecutionSettings().model_dump(mode="json"), 0)
             self.lifecycle.recover()
+            try:
+                self.config.get("memory")
+            except NotFound:
+                self.config.put("memory", MemorySettings().model_dump(mode="json"), 0)
+            self.memory = MemoryService(self.lifecycle, self.config)
             self.models = ModelGateway(self.lifecycle, self.config, self.budgets)
+            self.models.context_validator = self.memory.assert_context
             self.plugins = PluginRegistry(self.lifecycle, self.models)
+            self.plugins.memory = self.memory
             self.plugins.register(notebook_plugin())
+            self.plugins.register(memory_plugin())
+            self.outbox.context_validator = self.memory.assert_context
+            self.outbox.context_provider = self.memory.references
+            self.outbox.on_sent = self.memory.commit_uses
             self.agent = AgentLoop(self)
         except BaseException:
             if hasattr(self, "db"):

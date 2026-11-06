@@ -71,6 +71,7 @@ class ActivityRequest(StrictModel):
     priority: int = Field(default=0, ge=-100, le=100)
     due_at: datetime | None = None
     parent_id: str | None = None
+    trigger_event_ids: list[str] = Field(default_factory=list, max_length=200)
 
     @field_validator("due_at")
     @classmethod

@@ -8,7 +8,7 @@ from datetime import timedelta
 from uuid import uuid4
 
 from mkbot.accounting.budgets import BudgetManager, Charge
-from mkbot.domain.errors import Conflict, NotFound
+from mkbot.domain.errors import Conflict, ContextInvalidated, NotFound
 from mkbot.models.contracts import (
     GatewaySettings,
     Message,
@@ -34,6 +34,7 @@ class ModelGateway:
         self.lifecycle, self.db, self.clock = lifecycle, lifecycle.db, lifecycle.clock
         self.config, self.budgets = config, budgets
         self.providers: dict[str, Provider] = {}
+        self.context_validator = None
         self._lock = asyncio.Lock()
         with self.db.transaction() as tx:
             tx.execute("UPDATE model_calls SET status='unknown' WHERE status='running'")
@@ -96,6 +97,8 @@ class ModelGateway:
                 parameters=route.parameters,
             )
             async with self._lock:
+                if self.context_validator:
+                    self.context_validator(activity_id)
                 with self.db.transaction() as tx:
                     self.lifecycle.check_admission(tx, activity_id)
                 history = self._history(activity_id, key)
@@ -192,6 +195,22 @@ class ModelGateway:
                 )
                 raise ModelUnavailable("适配器未确认结果，需核对该次调用") from None
             else:
+                try:
+                    if self.context_validator:
+                        self.context_validator(activity_id)
+                except ContextInvalidated:
+                    self._finish(
+                        attempt_id,
+                        work_id,
+                        scopes,
+                        route,
+                        reply.usage,
+                        "invalidated",
+                        "context_invalidated",
+                        started,
+                        settings,
+                    )
+                    raise
                 self._finish(
                     attempt_id,
                     work_id,
@@ -331,7 +350,7 @@ class ModelGateway:
                     "UPDATE model_circuits SET failures=0,open_until=NULL WHERE provider=?",
                     (route.provider,),
                 )
-            elif error_kind != "invalid_request":
+            elif error_kind not in ("invalid_request", "context_invalidated"):
                 tx.execute(
                     "UPDATE model_circuits SET failures=failures+1 WHERE provider=?",
                     (route.provider,),
@@ -362,7 +381,7 @@ class ModelGateway:
                 now,
             )
         self.lifecycle.finish_work(
-            work_id, status if status != "succeeded" else "succeeded", detail=error_kind or ""
+            work_id, "failed" if status == "invalidated" else status, detail=error_kind or ""
         )
 
     def calls(self, limit: int = 100) -> list[dict]:

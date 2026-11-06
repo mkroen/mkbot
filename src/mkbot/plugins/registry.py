@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
-from mkbot.domain.errors import Conflict, NotFound
+from mkbot.domain.errors import Conflict, ContextInvalidated, NotFound
 from mkbot.models.contracts import ModelUnavailable, ToolCall, ToolDefinition
 from mkbot.models.gateway import ModelGateway
 from mkbot.plugins.context import PluginContext
@@ -27,6 +27,7 @@ class PluginRegistry:
         )
         self.plugins: dict[str, Plugin] = {}
         self.tools: dict[str, tuple[Plugin, Tool]] = {}
+        self.memory = None
         with self.db.transaction() as tx:
             tx.execute("UPDATE tool_calls SET status='unknown' WHERE status='running'")
 
@@ -68,6 +69,8 @@ class PluginRegistry:
         )
 
     async def execute(self, activity_id: str, key: str, call: ToolCall) -> ToolResult:
+        if self.memory:
+            self.memory.assert_context(activity_id)
         if not key or len(key) > 200:
             raise ValueError("工具调用需要稳定且有限长度的键")
         if call.name not in self.tools:
@@ -92,6 +95,8 @@ class PluginRegistry:
                     raise Conflict("同一工具调用键不能变更操作或参数")
                 if row["status"] in ("running", "unknown"):
                     raise ToolOutcomeUnknown("工具尚在执行或结果未知，不能重复执行")
+                if row["status"] == "invalidated":
+                    raise ContextInvalidated("工具结果引用的旧记忆已失效")
                 return ToolResult.model_validate_json(row["result"])
         item = self.db.rows("SELECT * FROM activities WHERE id=?", (activity_id,))[0]
         context = PluginContext(
@@ -103,13 +108,14 @@ class PluginRegistry:
             self.db,
             self.clock,
             self.models,
+            self.memory,
         )
         call_id = str(uuid4())
         work_id = self.lifecycle.start_work("tool", activity_id)
         with self.db.transaction() as tx:
             tx.execute(
                 "INSERT INTO tool_calls(id,activity_id,invocation_key,fingerprint,tool,work_id,"
-                "status,started_at) VALUES(?,?,?,?,?,?,?,?)",
+                "status,started_at,evidence_kind) VALUES(?,?,?,?,?,?,?,?,?)",
                 (
                     call_id,
                     activity_id,
@@ -119,6 +125,7 @@ class PluginRegistry:
                     work_id,
                     "running",
                     timestamp(self.clock.now()),
+                    tool.evidence_kind,
                 ),
             )
             audit(
@@ -131,8 +138,13 @@ class PluginRegistry:
         try:
             async with asyncio.timeout(tool.timeout_seconds):
                 result = ToolResult.model_validate(await tool.handler(context, arguments))
+                if self.memory:
+                    self.memory.assert_context(activity_id)
                 if len(result.model_dump_json().encode()) > 64_000:
                     raise ValueError("工具结果超过大小限制")
+        except ContextInvalidated:
+            self._finish(call_id, work_id, "invalidated", None)
+            raise
         except ToolRejected:
             result = ToolResult(ok=False, error="工具已确认此次操作未执行")
             self._finish(call_id, work_id, "failed", result)
@@ -161,4 +173,4 @@ class PluginRegistry:
                 (status, result.model_dump_json() if result else None, now, call_id),
             )
             audit(tx, "tool.finished", call_id, {"status": status}, now)
-        self.lifecycle.finish_work(work_id, status)
+        self.lifecycle.finish_work(work_id, "failed" if status == "invalidated" else status)

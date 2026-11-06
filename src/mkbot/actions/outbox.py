@@ -24,6 +24,21 @@ class Outbox:
     def __init__(self, lifecycle: Lifecycle, *, max_attempts: int = 3) -> None:
         self.lifecycle, self.db, self.clock = lifecycle, lifecycle.db, lifecycle.clock
         self.max_attempts = max_attempts
+        self.context_validator = None
+        self.context_provider = None
+        self.on_sent = None
+
+    @staticmethod
+    def _check_audience(tx, activity_id: str | None, conversation_id: str) -> None:
+        if activity_id is None:
+            return  # 操作者/适配器直接投递不复用角色上下文。
+        row = tx.execute(
+            "SELECT conversation_id FROM activities WHERE id=?", (activity_id,)
+        ).fetchone()
+        if not row:
+            raise NotFound("投递活动不存在")
+        if row[0] != conversation_id:
+            raise Conflict("跨会话分享需要按目标受众新建活动，不能直接转发当前私聊上下文")
 
     def enqueue(
         self,
@@ -36,7 +51,11 @@ class Outbox:
         if not action_key or not conversation_id:
             raise ValueError("投递需要行动 ID 与目标会话")
         content, now = encode(payload), timestamp(self.clock.now())
+        refs = self.context_provider(activity_id) if activity_id and self.context_provider else []
+        if activity_id and self.context_validator:
+            self.context_validator(activity_id, refs)
         with self.db.transaction() as tx:
+            self._check_audience(tx, activity_id, conversation_id)
             existing = tx.execute(
                 "SELECT * FROM deliveries WHERE action_key=?", (action_key,)
             ).fetchone()
@@ -52,8 +71,17 @@ class Outbox:
             delivery_id = str(uuid4())
             tx.execute(
                 "INSERT INTO deliveries(id,action_key,activity_id,conversation_id,payload,"
-                "created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
-                (delivery_id, action_key, activity_id, conversation_id, content, now, now),
+                "created_at,updated_at,memory_refs) VALUES(?,?,?,?,?,?,?,?)",
+                (
+                    delivery_id,
+                    action_key,
+                    activity_id,
+                    conversation_id,
+                    content,
+                    now,
+                    now,
+                    encode(refs),
+                ),
             )
             audit(tx, "delivery.queued", delivery_id, {"action_key": action_key}, now)
         return self.get(delivery_id)
@@ -66,6 +94,7 @@ class Outbox:
         return row | {
             "payload": json.loads(row["payload"]),
             "receipt": json.loads(row["receipt"]) if row["receipt"] else None,
+            "memory_refs": json.loads(row["memory_refs"]),
         }
 
     def list(self) -> list[dict]:
@@ -76,10 +105,14 @@ class Outbox:
 
     def claim(self, delivery_id: str) -> dict:
         now, work_id = timestamp(self.clock.now()), str(uuid4())
+        snapshot = self.get(delivery_id)
+        if snapshot["activity_id"] and self.context_validator:
+            self.context_validator(snapshot["activity_id"], snapshot["memory_refs"])
         with self.db.transaction() as tx:
             row = tx.execute("SELECT * FROM deliveries WHERE id=?", (delivery_id,)).fetchone()
             if not row:
                 raise NotFound("投递不存在")
+            self._check_audience(tx, row["activity_id"], row["conversation_id"])
             state = tx.execute("SELECT * FROM characters WHERE id='main'").fetchone()
             if state["paused"] or state["phase"] == "sleeping":
                 raise AdmissionDenied("角色暂停或睡眠期间不能投递")
@@ -128,6 +161,14 @@ class Outbox:
             )
             audit(tx, "delivery.settled", delivery_id, {"status": status}, now)
             self.lifecycle.try_sleep(tx)
+        if status == "sent" and row["activity_id"] and self.on_sent:
+            # 回执已确定；记忆规则变更不能撤回平台已确认的发送。
+            from mkbot.domain.errors import ContextInvalidated
+
+            try:
+                self.on_sent(row["activity_id"])
+            except ContextInvalidated:
+                pass
         return self.get(delivery_id)
 
     def retry(self, delivery_id: str) -> None:

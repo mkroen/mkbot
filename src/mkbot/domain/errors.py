@@ -9,6 +9,10 @@ class NotFound(MkbotError):
     pass
 
 
+class ContextInvalidated(MkbotError):
+    """上下文引用已失效，旧生成结果不能继续执行或对外发送。"""
+
+
 class Conflict(MkbotError):
     pass
 

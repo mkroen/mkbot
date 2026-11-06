@@ -21,6 +21,13 @@ class ActivityService:
         activity_id, now = str(uuid4()), timestamp(self.clock.now())
         with self.db.transaction() as tx:
             root_id = activity_id
+            triggers = sorted(set(request.trigger_event_ids))
+            for event_id in triggers:
+                event = tx.execute(
+                    "SELECT conversation_id FROM events WHERE id=?", (event_id,)
+                ).fetchone()
+                if not event or event[0] != request.conversation_id:
+                    raise Conflict("触发事件必须属于活动所在会话")
             if request.parent_id:
                 parent = tx.execute(
                     "SELECT root_id FROM activities WHERE id=?", (request.parent_id,)
@@ -30,7 +37,8 @@ class ActivityService:
                 root_id = parent["root_id"]
             tx.execute(
                 "INSERT INTO activities(id,root_id,parent_id,kind,goal,origin,conversation_id,"
-                "priority,due_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                "priority,due_at,created_at,updated_at,trigger_event_ids) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     activity_id,
                     root_id,
@@ -43,6 +51,7 @@ class ActivityService:
                     timestamp(request.due_at) if request.due_at else None,
                     now,
                     now,
+                    encode(triggers),
                 ),
             )
             audit(tx, "activity.created", activity_id, {"root_id": root_id}, now)
@@ -52,11 +61,18 @@ class ActivityService:
         rows = self.db.rows("SELECT * FROM activities WHERE id=?", (activity_id,))
         if not rows:
             raise NotFound("活动不存在")
-        return rows[0] | {"checkpoint": json.loads(rows[0]["checkpoint"])}
+        return rows[0] | {
+            "checkpoint": json.loads(rows[0]["checkpoint"]),
+            "trigger_event_ids": json.loads(rows[0]["trigger_event_ids"]),
+        }
 
     def list(self) -> list[dict]:
         return [
-            row | {"checkpoint": json.loads(row["checkpoint"])}
+            row
+            | {
+                "checkpoint": json.loads(row["checkpoint"]),
+                "trigger_event_ids": json.loads(row["trigger_event_ids"]),
+            }
             for row in self.db.rows("SELECT * FROM activities ORDER BY created_at DESC LIMIT 200")
         ]
 

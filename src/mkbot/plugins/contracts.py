@@ -40,6 +40,7 @@ class Tool:
     handler: Callable[[Any, StrictModel], Awaitable[ToolResult]]
     effect: Literal["read_only", "local", "external"] = "read_only"
     timeout_seconds: float = 30
+    evidence_kind: Literal["none", "observation", "artifact"] = "none"
 
 
 @dataclass(frozen=True, slots=True)

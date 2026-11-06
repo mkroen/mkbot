@@ -7,7 +7,13 @@ from typing import TYPE_CHECKING
 
 from pydantic import Field
 
-from mkbot.domain.errors import AdmissionDenied, BudgetExceeded, Conflict, NotFound
+from mkbot.domain.errors import (
+    AdmissionDenied,
+    BudgetExceeded,
+    Conflict,
+    ContextInvalidated,
+    NotFound,
+)
 from mkbot.domain.models import StrictModel
 from mkbot.models.contracts import Message, ModelReply, ModelUnavailable
 from mkbot.plugins.contracts import ToolOutcomeUnknown, ToolResult
@@ -52,6 +58,7 @@ class AgentLoop:
 
     def _step(self, activity_id: str, root: str, key: str, settings: ExecutionSettings) -> None:
         k = self.kernel
+        k.memory.assert_context(activity_id)
         with k.db.transaction() as tx:
             k.lifecycle.check_admission(tx, activity_id)
             guard = tx.execute(
@@ -97,25 +104,54 @@ class AgentLoop:
             Message(role="system", content=system),
             Message(role="user", content=activity["goal"]),
         ]
+        memories = k.memory.search(
+            audience=activity["conversation_id"] or "@self",
+            query=activity["goal"],
+            activity_id=activity["id"],
+            select=True,
+        )
+        if memories:
+            messages.append(
+                Message(
+                    role="user",
+                    content="可用于当前会话的记忆资料（请保留陈述/推断区别）：\n"
+                    + encode([k.memory.context_item(item) for item in memories]),
+                )
+            )
         if activity["conversation_id"]:
             rows = k.db.rows(
-                "SELECT payload FROM events WHERE conversation_id=? "
-                "ORDER BY received_at DESC,rowid DESC LIMIT 40",
+                "SELECT e.id,e.payload FROM events e JOIN inbox i ON i.event_id=e.id "
+                "WHERE conversation_id=? AND i.status!='ignored' AND NOT EXISTS "
+                "(SELECT 1 FROM memory_suppression s WHERE s.source_id='event:'||e.id) "
+                "ORDER BY received_at DESC,e.rowid DESC LIMIT 40",
                 (activity["conversation_id"],),
             )
-            records = [json.loads(row["payload"]) for row in reversed(rows)]
+            records = []
+            for row in reversed(rows):
+                event = json.loads(row["payload"])
+                records.append(
+                    event
+                    | {
+                        "source_ref": "event:" + row["id"],
+                        "subject_id": f"{event['source']}/{event['sender_id']}",
+                    }
+                )
             if records:
                 text = encode(records)
                 if len(text.encode()) > 96_000:
                     # 保留完整事件边界，不截断 JSON 或半条消息。
                     while records and len(encode(records).encode()) > 96_000:
                         records.pop(0)
+                k.memory.select_sources(
+                    activity["id"], [record["source_ref"] for record in records]
+                )
                 messages.append(
                     Message(role="user", content="当前会话的最近记录：\n" + encode(records))
                 )
         return messages
 
     def _save(self, activity_id: str, state: dict) -> None:
+        self.kernel.memory.assert_context(activity_id)
         activity = self.kernel.activities.get(activity_id)
         checkpoint = activity["checkpoint"] | {"agent": state}
         self.kernel.activities.checkpoint(activity_id, activity["version"], checkpoint)
@@ -149,6 +185,7 @@ class AgentLoop:
     async def _run(self, activity_id: str) -> dict:
         k = self.kernel
         activity = k.activities.get(activity_id)
+        k.memory.assert_context(activity_id)
         if activity["status"] == "completed":
             return {
                 "status": "completed",
@@ -201,6 +238,8 @@ class AgentLoop:
                         state["result"] = {"text": reply.text, "delivery_id": None}
                     self._save(activity_id, state)
                     k.activities.transition(activity_id, "completed")
+                    if not activity["conversation_id"]:
+                        k.memory.commit_uses(activity_id)
                     return {"status": "completed", "result": state["result"]}
                 if state["tool_index"] == 0:
                     # 每轮 assistant tool_calls 仅写一次；重启可由末条角色辨认。
@@ -243,6 +282,14 @@ class AgentLoop:
                 state["pending"] = None
                 state["decision"] += 1
                 self._save(activity_id, state)
+            except ContextInvalidated as exc:
+                k.memory.invalidate_context(activity_id, str(exc))
+                if not k.db.rows(
+                    "SELECT 1 FROM work WHERE activity_id=? AND status IN ('running','unknown')",
+                    (activity_id,),
+                ):
+                    k.activities.transition(activity_id, "paused")
+                return {"status": "paused", "reason": str(exc)}
             except ModelUnavailable as exc:
                 return self._stop(activity_id, state, str(exc), retry_at=exc.retry_at)
             except (BudgetExceeded, AdmissionDenied, ToolOutcomeUnknown, NotFound) as exc:

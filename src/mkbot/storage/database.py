@@ -10,7 +10,7 @@ from typing import Any
 
 from mkbot.domain.errors import UnsupportedSchema
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 SCHEMA = """
 CREATE TABLE characters (
@@ -118,6 +118,84 @@ CREATE TABLE run_progress (
 );
 """
 
+MEMORY_SCHEMA = """
+ALTER TABLE activities ADD COLUMN trigger_event_ids TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE deliveries ADD COLUMN memory_refs TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE tool_calls ADD COLUMN evidence_kind TEXT NOT NULL DEFAULT 'none';
+CREATE TABLE memory_sources (
+    id TEXT PRIMARY KEY, kind TEXT NOT NULL, actor_id TEXT NOT NULL,
+    conversation_id TEXT, use_scope TEXT NOT NULL, disclosure_scope TEXT NOT NULL,
+    occurred_at TEXT NOT NULL, independent INTEGER NOT NULL, content TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE memories (
+    id TEXT PRIMARY KEY, kind TEXT NOT NULL, subjects TEXT NOT NULL, content TEXT NOT NULL,
+    tier TEXT NOT NULL, bucket TEXT NOT NULL DEFAULT 'fifo', origin_scope TEXT NOT NULL,
+    use_scope TEXT NOT NULL, disclosure_scope TEXT NOT NULL, confidence TEXT NOT NULL,
+    importance REAL NOT NULL, occurred_at TEXT NOT NULL, valid_from TEXT NOT NULL,
+    valid_until TEXT, status TEXT NOT NULL DEFAULT 'active', revision INTEGER NOT NULL DEFAULT 1,
+    activation REAL NOT NULL DEFAULT 0, activation_at TEXT NOT NULL,
+    last_used_at TEXT, protected_until TEXT, superseded_by TEXT REFERENCES memories(id),
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE memory_evidence (
+    memory_id TEXT NOT NULL REFERENCES memories(id),
+    source_id TEXT NOT NULL REFERENCES memory_sources(id),
+    PRIMARY KEY(memory_id,source_id)
+);
+CREATE TABLE memory_derivations (
+    parent_id TEXT NOT NULL REFERENCES memories(id), child_id TEXT NOT NULL REFERENCES memories(id),
+    PRIMARY KEY(parent_id,child_id)
+);
+CREATE TABLE memory_versions (
+    memory_id TEXT NOT NULL REFERENCES memories(id), revision INTEGER NOT NULL,
+    snapshot TEXT NOT NULL, changed_at TEXT NOT NULL, PRIMARY KEY(memory_id,revision)
+);
+CREATE TABLE memory_selections (
+    activity_id TEXT NOT NULL REFERENCES activities(id),
+    memory_id TEXT NOT NULL REFERENCES memories(id),
+    revision INTEGER NOT NULL, claimed_purpose TEXT,
+    PRIMARY KEY(activity_id,memory_id,revision)
+);
+CREATE TABLE memory_uses (
+    memory_id TEXT NOT NULL REFERENCES memories(id), revision INTEGER NOT NULL,
+    root_id TEXT NOT NULL REFERENCES activities(id), trigger_source_id TEXT NOT NULL,
+    purpose TEXT NOT NULL, reward REAL NOT NULL, used_at TEXT NOT NULL,
+    PRIMARY KEY(memory_id,revision,root_id), UNIQUE(memory_id,revision,trigger_source_id)
+);
+CREATE TABLE memory_use_triggers (
+    memory_id TEXT NOT NULL REFERENCES memories(id), revision INTEGER NOT NULL,
+    trigger_source_id TEXT NOT NULL REFERENCES memory_sources(id),
+    root_id TEXT NOT NULL REFERENCES activities(id),
+    PRIMARY KEY(memory_id,revision,trigger_source_id)
+);
+CREATE TABLE memory_suppression (
+    source_id TEXT PRIMARY KEY REFERENCES memory_sources(id), forgotten_at TEXT NOT NULL
+);
+CREATE TABLE context_invalidations (
+    activity_id TEXT PRIMARY KEY REFERENCES activities(id),
+    reason TEXT NOT NULL, occurred_at TEXT NOT NULL
+);
+CREATE TABLE activity_sources (
+    activity_id TEXT NOT NULL REFERENCES activities(id),
+    source_id TEXT NOT NULL REFERENCES memory_sources(id),
+    PRIMARY KEY(activity_id,source_id)
+);
+CREATE TABLE plugin_source_refs (
+    plugin TEXT NOT NULL, scope TEXT NOT NULL, key TEXT NOT NULL,
+    source_id TEXT NOT NULL REFERENCES memory_sources(id),
+    PRIMARY KEY(plugin,scope,key,source_id)
+);
+CREATE TABLE plugin_memory_refs (
+    plugin TEXT NOT NULL, scope TEXT NOT NULL, key TEXT NOT NULL,
+    memory_id TEXT NOT NULL REFERENCES memories(id), revision INTEGER NOT NULL,
+    PRIMARY KEY(plugin,scope,key,memory_id)
+);
+CREATE INDEX memory_lookup ON memories(status,tier,origin_scope,created_at);
+CREATE INDEX memory_root_source ON memory_evidence(source_id,memory_id);
+CREATE INDEX activity_source ON activity_sources(source_id,activity_id);
+"""
+
 
 def encode(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
@@ -154,6 +232,11 @@ class Database:
         if version == 2:
             self.connection.executescript(
                 "BEGIN IMMEDIATE;\n" + AGENT_SCHEMA + "\nPRAGMA user_version=3;\nCOMMIT;"
+            )
+            version = 3
+        if version == 3:
+            self.connection.executescript(
+                "BEGIN IMMEDIATE;\n" + MEMORY_SCHEMA + "\nPRAGMA user_version=4;\nCOMMIT;"
             )
 
     @contextmanager

@@ -40,6 +40,7 @@
           <button data-view="activities"><span>▤</span>活动与计划</button>
           <button data-view="inbox"><span>▱</span>留言收件箱</button>
           <button data-view="persona"><span>◇</span>人格配置</button>
+          <button data-view="memory"><span>◌</span>记忆与画像</button>
           <button data-view="models"><span>◎</span>模型与路由</button>
           <button data-view="plugins"><span>✧</span>能力插件</button>
           <button data-view="usage"><span>▥</span>资源额度</button>
@@ -168,6 +169,214 @@
               </div>
             </form>
           </article>
+        </section>
+        <section id="memory" class="view" hidden>
+          <article class="panel">
+            <div class="panel-heading">
+              <div><h3>记住相处，也记住自己</h3></div>
+              <button id="memory-new" class="primary">录入记忆</button>
+            </div>
+            <p class="muted">
+              人物偏好、共同经历与角色自身的兴趣，都保留来源与适用范围。查看不会强化记忆；实际使用只会有限提高活跃度。
+            </p>
+            <form id="memory-filter" class="memory-filters">
+              <div>
+                <label for="memory-tier">记忆层级</label
+                ><select id="memory-tier">
+                  <option value="">全部层级</option>
+                  <option value="recent">近期记忆</option>
+                  <option value="long">长期记忆</option>
+                  <option value="archived">已归档</option>
+                </select>
+              </div>
+              <div>
+                <label for="memory-status">状态</label
+                ><select id="memory-status">
+                  <option value="active">有效记录</option>
+                  <option value="superseded">已更正</option>
+                  <option value="forgotten">已遗忘</option>
+                  <option value="">全部状态</option>
+                </select>
+              </div>
+              <div>
+                <label for="memory-subject">人物或角色</label
+                ><input
+                  id="memory-subject"
+                  placeholder="例如 qq/alice 或 self"
+                />
+              </div>
+              <button type="submit">筛选</button>
+            </form>
+          </article>
+          <article id="memory-editor" class="panel" hidden>
+            <div class="panel-heading">
+              <h3 id="memory-editor-title">录入记忆</h3>
+              <button id="memory-editor-close" type="button">收起</button>
+            </div>
+            <form id="memory-edit-form">
+              <div class="form-grid">
+                <div>
+                  <label for="memory-kind">类型</label
+                  ><select id="memory-kind">
+                    <option value="preference">偏好</option>
+                    <option value="fact">事实陈述</option>
+                    <option value="boundary">相处边界</option>
+                    <option value="current_state">临时近况</option>
+                    <option value="experience">经历</option>
+                    <option value="opinion">观点</option>
+                    <option value="inference">推断</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="memory-subjects">涉及人物（逗号分隔）</label
+                  ><input
+                    id="memory-subjects"
+                    required
+                    placeholder="self / qq/alice"
+                  />
+                </div>
+                <div>
+                  <label for="memory-edit-tier">保存到</label
+                  ><select id="memory-edit-tier">
+                    <option value="recent">近期记忆</option>
+                    <option value="long">长期记忆</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="memory-importance">重要程度（0—1）</label
+                  ><input
+                    id="memory-importance"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value="0.5"
+                    required
+                  />
+                </div>
+              </div>
+              <label for="memory-content">记忆内容</label
+              ><textarea
+                id="memory-content"
+                rows="3"
+                maxlength="8000"
+                required
+              ></textarea>
+              <div class="form-grid">
+                <div>
+                  <label id="memory-use-label" for="memory-use"
+                    >可用与表达范围</label
+                  ><input
+                    id="memory-use"
+                    required
+                    placeholder="会话 ID、@self 或 *；逗号分隔"
+                  />
+                </div>
+                <div id="memory-disclosure-field" hidden>
+                  <label for="memory-disclosure">可以表达给谁</label
+                  ><input
+                    id="memory-disclosure"
+                    placeholder="会话 ID、@self 或 *"
+                  />
+                </div>
+                <div>
+                  <label for="memory-expiry">有效期（临时近况必填）</label
+                  ><input id="memory-expiry" type="datetime-local" />
+                </div>
+              </div>
+              <p class="muted small-copy">
+                具体会话 ID 表示仅该会话，@self 表示角色内部，*
+                表示所有会话。手动录入会标记为人工来源。
+              </p>
+              <label id="memory-sharing-label" class="check-label" hidden
+                ><input
+                  id="memory-sharing"
+                  type="checkbox"
+                />我明确允许扩大此条记忆的共享范围</label
+              >
+              <div class="button-row">
+                <button class="primary" type="submit">保存记忆</button
+                ><span id="memory-editor-version" class="muted"></span>
+              </div>
+            </form>
+          </article>
+          <div id="memory-list"></div>
+          <div class="button-row">
+            <button id="memory-prev">上一页</button
+            ><span id="memory-page" class="muted"></span
+            ><button id="memory-next">下一页</button>
+          </div>
+          <article id="memory-history" class="panel" hidden>
+            <div class="panel-heading">
+              <h3>记忆修订记录</h3>
+              <button id="memory-history-close">收起</button>
+            </div>
+            <div id="memory-history-content"></div>
+          </article>
+          <article class="panel">
+            <h3>查看角色会想起什么</h3>
+            <p class="muted">
+              输入受众范围，可预览当前会话能召回的记忆，或查看某个人的长期画像。这不会发消息，也不会强化记忆。
+            </p>
+            <form id="memory-preview-form" class="form-grid">
+              <div>
+                <label for="memory-audience">受众会话</label
+                ><input id="memory-audience" value="@self" required />
+              </div>
+              <div>
+                <label for="memory-preview-subject">人物（画像模式必填）</label
+                ><input
+                  id="memory-preview-subject"
+                  placeholder="self 或 qq/alice"
+                />
+              </div>
+              <div>
+                <label for="memory-query">当前话题</label
+                ><input id="memory-query" placeholder="例如 安静的地方" />
+              </div>
+              <div>
+                <label for="memory-preview-mode">查看内容</label
+                ><select id="memory-preview-mode">
+                  <option value="recall">相关记忆</option>
+                  <option value="profile">长期画像</option>
+                </select>
+              </div>
+              <div><button class="primary" type="submit">预览</button></div>
+            </form>
+            <div id="memory-preview-result" class="preview-result"></div>
+          </article>
+          <details class="panel">
+            <summary>近期容量与强化规则</summary>
+            <p class="muted small-copy">
+              recent_capacity / recent_per_scope 限制普通 FIFO
+              区；protected_capacity / protected_per_scope
+              限制保护区，两区容量相加。daily_reward_limit 是滚动 24
+              小时上限。缩容在下一次清醒维护或记忆写入时整理。
+            </p>
+            <form id="memory-settings-form">
+              <label for="memory-settings-json">完整记忆配置</label
+              ><textarea
+                id="memory-settings-json"
+                rows="15"
+                spellcheck="false"
+              ></textarea>
+              <div class="button-row">
+                <button class="primary" type="submit">保存记忆规则</button
+                ><span id="memory-settings-version" class="muted"></span>
+              </div>
+            </form>
+          </details>
+          <dialog id="memory-forget-dialog">
+            <h3>遗忘这段来源及派生记忆</h3>
+            <p id="memory-forget-impact"></p>
+            <p class="muted">
+              相关旧版本、依赖它的插件缓存和待发送草稿会被清理，活动需要重建上下文。原始聊天日志保留，但不再注入上下文或从这些旧来源提炼记忆。已经发出的消息无法撤回。
+            </p>
+            <div class="button-row">
+              <button id="memory-forget-confirm" class="danger">确认遗忘</button
+              ><button id="memory-forget-cancel">取消</button>
+            </div>
+          </dialog>
         </section>
         <section id="models" class="view" hidden>
           <article class="panel">

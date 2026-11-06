@@ -18,7 +18,17 @@ def client(tmp_path, clock):
 
 def test_all_management_routes_require_auth(client):
     client.headers.pop("Authorization")
-    for path in ("status", "inbox", "activities", "deliveries", "audit", "usage", "config/persona"):
+    for path in (
+        "status",
+        "inbox",
+        "activities",
+        "deliveries",
+        "audit",
+        "usage",
+        "config/persona",
+        "memory",
+        "config/memory",
+    ):
         assert client.get(f"/api/{path}").status_code == 401
     assert client.get("/healthz").json()["status"] == "ok"
     response = client.get("/")
@@ -117,3 +127,83 @@ def test_init_keeps_credentials_and_does_not_print_secret(tmp_path, monkeypatch,
     assert token not in capsys.readouterr().out
     main(["--data-dir", str(tmp_path), "init"])
     assert admin_token(tmp_path) == token
+
+
+def test_memory_management_scope_revision_and_forget_preview(client):
+    payload = {
+        "kind": "preference",
+        "subjects": ["qq/alice"],
+        "content": "喜欢安静的咖啡馆",
+        "tier": "long",
+        "scope": ["private:alice"],
+    }
+    created = client.post("/api/memory", json=payload)
+    assert created.status_code == 201
+    item = created.json()
+    assert item["confidence"] == "operator"
+    url = f"/api/memory/{item['id']}"
+    assert client.post("/api/memory/search", json={"audience": "group:friends"}).json() == []
+    profile = client.post(
+        "/api/memory/profile",
+        json={
+            "subject": "qq/alice",
+            "audience": "private:alice",
+        },
+    ).json()
+    assert profile["items"][0]["id"] == item["id"]
+    assert client.get("/api/memory", params={"subject": "qq/bob"}).json() == []
+    edit = {"expected_revision": 1, "use_scope": ["*"], "disclosure_scope": ["*"]}
+    assert client.put(url, json=edit).status_code == 409
+    edit["allow_wider_sharing"] = True
+    assert client.put(url, json=edit).json()["revision"] == 2
+    assert client.put(url, json=edit).status_code == 409
+    assert len(client.get(url + "/history").json()) == 2
+    preview = client.get(url + "/forget-preview").json()
+    assert preview["affected_ids"] == [item["id"]]
+    assert preview["expected_revision"] == 2
+    assert client.post(url + "/forget", json={"expected_revision": 1}).status_code == 409
+    forgotten = client.post(url + "/forget", json={"expected_revision": 2}).json()
+    assert forgotten["original_chat_retained"]
+    assert client.get(url).json()["content"] == ""
+    assert len(client.get(url + "/history").json()) == 1
+    assert client.app.state.kernel.db.rows("SELECT content FROM memory_sources") == [
+        {"content": None}
+    ]
+
+
+def test_memory_manual_failure_is_atomic_and_expiry_rules_validated(client, clock):
+    payload = {
+        "kind": "current_state",
+        "subjects": ["self"],
+        "content": "正在画画",
+        "scope": ["@self"],
+    }
+    assert client.post("/api/memory", json=payload).status_code == 422
+    payload["valid_until"] = (clock.now() - timedelta(seconds=1)).isoformat()
+    assert client.post("/api/memory", json=payload).status_code == 422
+    assert client.app.state.kernel.db.rows("SELECT * FROM memory_sources") == []
+    payload["valid_until"] = (clock.now() + timedelta(hours=1)).isoformat()
+    item = client.post("/api/memory", json=payload).json()
+    assert (
+        client.put(
+            f"/api/memory/{item['id']}",
+            json={
+                "expected_revision": 1,
+                "valid_until": None,
+            },
+        ).status_code
+        == 422
+    )
+    assert client.get("/api/memory/absent/history").status_code == 404
+    config = client.get("/api/config/memory").json()
+    config["content"]["daily_reward_limit"] = -1
+    assert (
+        client.put(
+            "/api/config/memory",
+            json={
+                "expected_revision": config["revision"],
+                "content": config["content"],
+            },
+        ).status_code
+        == 422
+    )

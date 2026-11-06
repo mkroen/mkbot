@@ -16,7 +16,8 @@ body {
 }
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 button {
@@ -47,7 +48,8 @@ button.outline {
   background: transparent;
 }
 input,
-textarea {
+textarea,
+select {
   width: 100%;
   padding: 12px;
   border: 1px solid #d8e2da;
@@ -56,7 +58,8 @@ textarea {
   color: #213332;
 }
 input:focus,
-textarea:focus {
+textarea:focus,
+select:focus {
   outline: 2px solid #bdd6c8;
   outline-offset: 1px;
 }
@@ -480,6 +483,81 @@ footer {
 [hidden] {
   display: none !important;
 }
+.memory-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.6fr auto;
+  gap: 14px;
+  align-items: end;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 20px;
+  align-items: end;
+}
+.type-label {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 12px;
+}
+.small-copy {
+  font-size: 12px;
+  margin-top: 12px;
+}
+details summary {
+  cursor: pointer;
+  color: #517864;
+  font-size: 12px;
+  padding: 12px 0;
+}
+.memory-details {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 10px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.memory-details dt {
+  color: var(--muted);
+}
+.memory-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.check-label {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+.check-label input {
+  width: auto;
+}
+.danger-text {
+  color: #a04b41;
+}
+button.danger {
+  background: #a04b41;
+  color: #fff;
+  border-color: #a04b41;
+}
+.preview-result {
+  margin-top: 22px;
+}
+dialog {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 30px;
+  color: #213332;
+  max-width: 540px;
+  width: calc(100% - 32px);
+}
+dialog::backdrop {
+  background: #132b2866;
+}
+dialog p {
+  line-height: 1.8;
+}
 @media (max-width: 1050px) {
   main {
     padding: 26px;
@@ -515,6 +593,10 @@ footer {
   }
 }
 @media (max-width: 720px) {
+  .memory-filters,
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
   .sidebar {
     position: static;
     width: auto;
