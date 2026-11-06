@@ -24,6 +24,10 @@ class SchedulerSettings(StrictModel):
     idle_interval_seconds: int = Field(default=1800, ge=60, le=86400)
     idle_max_runs_per_day: int = Field(default=24, ge=0, le=1000)
     max_chat_burst: int = Field(default=4, ge=1, le=100)
+    max_open_plans: int = Field(default=20, ge=1, le=200)
+    max_plans_per_root: int = Field(default=4, ge=1, le=20)
+    max_runs_per_plan: int = Field(default=8, ge=1, le=100)
+    minimum_plan_interval_seconds: int = Field(default=60, ge=1, le=86400)
     idle_goal: str = Field(
         default="根据自己的兴趣、经历和未完成计划，选择现在想做的事。"
         "可以使用技能，也可以等待或休息；没有新进展时不要反复自问自答。",

@@ -10,7 +10,7 @@ from typing import Any
 
 from mkbot.domain.errors import UnsupportedSchema
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 SCHEMA = """
 CREATE TABLE characters (
@@ -224,6 +224,23 @@ CREATE INDEX inbox_lease_activity ON inbox_leases(activity_id);
 """
 
 
+PLANS_SCHEMA = """
+CREATE TABLE activity_plans (
+    activity_id TEXT PRIMARY KEY REFERENCES activities(id),
+    next_step TEXT NOT NULL, progress TEXT NOT NULL DEFAULT '',
+    last_result TEXT NOT NULL DEFAULT '',
+    creator_id TEXT REFERENCES activities(id), creation_key TEXT,
+    UNIQUE(creator_id,creation_key)
+);
+CREATE TABLE plan_runs (
+    activity_id TEXT PRIMARY KEY REFERENCES activities(id),
+    plan_id TEXT NOT NULL REFERENCES activity_plans(activity_id),
+    applied INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX plan_runs_parent ON plan_runs(plan_id,applied);
+"""
+
+
 def encode(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
@@ -269,6 +286,11 @@ class Database:
         if version == 4:
             self.connection.executescript(
                 "BEGIN IMMEDIATE;\n" + SCHEDULER_SCHEMA + "\nPRAGMA user_version=5;\nCOMMIT;"
+            )
+            version = 5
+        if version == 5:
+            self.connection.executescript(
+                "BEGIN IMMEDIATE;\n" + PLANS_SCHEMA + "\nPRAGMA user_version=6;\nCOMMIT;"
             )
 
     @contextmanager

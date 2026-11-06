@@ -141,6 +141,9 @@ class AgentLoop:
                         "phase": k.lifecycle.state()["phase"],
                         "activity_kind": activity["kind"],
                         "audience": activity["conversation_id"] or "@self",
+                        "minimum_plan_interval_seconds": (
+                            k.plans.settings().minimum_plan_interval_seconds
+                        ),
                         "assigned_source_refs": [
                             "event:" + key for key in activity["trigger_event_ids"]
                         ],
@@ -148,6 +151,11 @@ class AgentLoop:
                 ),
             )
         )
+        plans = k.plans.context(activity["id"])
+        if plans:
+            messages.append(
+                Message(role="user", content="当前受众可用的目标与进度资料：\n" + encode(plans))
+            )
         memories = k.memory.search(
             audience=activity["conversation_id"] or "@self",
             query=activity["goal"],

@@ -18,6 +18,8 @@ class ActivityService:
         self.lifecycle, self.db, self.clock = lifecycle, lifecycle.db, lifecycle.clock
 
     def create(self, request: ActivityRequest) -> dict:
+        if request.kind == "long_term_goal":
+            raise Conflict("长期目标请通过目标与计划入口创建")
         with self.db.transaction() as tx:
             activity_id = self.create_in(tx, request)
         return self.get(activity_id)
@@ -84,6 +86,7 @@ class ActivityService:
     def claim(self, activity_id: str) -> dict:
         now = timestamp(self.clock.now())
         with self.db.transaction() as tx:
+            self._not_plan(tx, activity_id)
             self.lifecycle.check_admission(tx)
             item = tx.execute("SELECT * FROM activities WHERE id=?", (activity_id,)).fetchone()
             if not item:
@@ -108,6 +111,7 @@ class ActivityService:
     def checkpoint(self, activity_id: str, expected_version: int, data: dict[str, Any]) -> dict:
         now = timestamp(self.clock.now())
         with self.db.transaction() as tx:
+            self._not_plan(tx, activity_id)
             changed = tx.execute(
                 "UPDATE activities SET checkpoint=?,version=version+1,updated_at=? "
                 "WHERE id=? AND version=? AND status IN ('running','waiting','paused')",
@@ -123,6 +127,7 @@ class ActivityService:
             raise ValueError("不允许的活动状态转换")
         now = timestamp(self.clock.now())
         with self.db.transaction() as tx:
+            self._not_plan(tx, activity_id)
             item = tx.execute("SELECT * FROM activities WHERE id=?", (activity_id,)).fetchone()
             if not item:
                 raise NotFound("活动不存在")
@@ -143,6 +148,12 @@ class ActivityService:
             audit(tx, "activity.transition", activity_id, {"status": status}, now)
             self.lifecycle.try_sleep(tx)
         return self.get(activity_id)
+
+    def _not_plan(self, tx, activity_id: str) -> None:
+        if tx.execute(
+            "SELECT 1 FROM activity_plans WHERE activity_id=?", (activity_id,)
+        ).fetchone():
+            raise Conflict("目标容器不能作为单轮活动运行，请使用目标与计划入口")
 
     def step(self, activity_id: str, *, max_steps: int) -> int:
         """派生任务和恢复后的活动累计同一个根活动步骤额度。"""

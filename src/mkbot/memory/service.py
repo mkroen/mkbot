@@ -456,6 +456,19 @@ class MemoryService:
                 (now, activity_id),
             )
             tx.execute(
+                "UPDATE activity_plans SET next_step='依据已失效，请重新评估',"
+                "progress='',last_result='' "
+                "WHERE activity_id=?",
+                (activity_id,),
+            )
+            tx.execute(
+                "UPDATE activities SET goal='目标依据已失效',due_at=NULL,status=CASE WHEN "
+                "kind='long_term_goal' AND status NOT IN ('completed','cancelled','failed') "
+                "THEN 'paused' ELSE status END WHERE id=? "
+                "AND kind IN ('long_term_goal','plan_step')",
+                (activity_id,),
+            )
+            tx.execute(
                 "UPDATE activity_decisions SET payload='{}',status='invalidated' WHERE "
                 "activity_id=?",
                 (activity_id,),
@@ -838,6 +851,27 @@ class MemoryService:
     def invalidate_context(self, activity_id: str, reason: str) -> None:
         with self.db.transaction() as tx:
             self._invalidate_activities(tx, {activity_id}, reason)
+
+    def inherit_context_in(self, tx, source_id: str, target_id: str) -> None:
+        """派生计划和后续执行继承实际读过的全部资料，不能重新指定可见范围。"""
+        self._assert_context(tx, source_id)
+        audience = self._audience(tx, target_id)
+        for ref in self.references(source_id):
+            item = self._row(tx, ref["id"])
+            if item["revision"] != ref["revision"] or not self._usable(item, audience):
+                raise ContextInvalidated("目标的记忆依据不允许用于当前会话")
+            tx.execute(
+                "INSERT OR IGNORE INTO memory_selections(activity_id,memory_id,revision) "
+                "VALUES(?,?,?)",
+                (target_id, ref["id"], ref["revision"]),
+            )
+        for source in self.source_references(source_id):
+            item = self._source(tx, source)
+            if not allows(item["use_scope"], audience) or (
+                audience != "@self" and not allows(item["disclosure_scope"], audience)
+            ):
+                raise ContextInvalidated("目标的来源不允许用于当前会话")
+            tx.execute("INSERT OR IGNORE INTO activity_sources VALUES(?,?)", (target_id, source))
 
     def claim_use(self, activity_id: str, memory_ids: list[str], purpose: str) -> None:
         if not purpose or len(purpose) > 500:

@@ -12,10 +12,12 @@ let memoryOffset = 0;
 let memoryRevision = 0;
 let editingMemory = null;
 let forgettingMemory = null;
+let editingPlan = null;
 const titles = {
   overview: "运行概览",
   scheduler: "调度与作息",
-  activities: "活动与计划",
+  activities: "运行活动",
+  plans: "目标与计划",
   inbox: "留言收件箱",
   persona: "人格配置",
   memory: "记忆与画像",
@@ -114,7 +116,8 @@ function empty(text) {
 }
 const descriptions = {
   overview: "照看角色的日常，也看清每一次行动。",
-  activities: "继续未完成的事情，为以后留下计划。",
+  activities: "查看每轮执行、暂停原因和实际结果。",
+  plans: "记下想做的事，把每一次进展留给之后的自己。",
   inbox: "按会话查看留言与审阅结果，无需逐条回应。",
   persona: "定义角色是谁、如何表达，以及对什么感兴趣。",
   memory: "管理相处中的记忆、来源和分享边界。",
@@ -405,7 +408,10 @@ async function scheduler() {
     api("scheduler"),
     api("status"),
   ]);
-  fillScheduler(config);
+  fillScheduler({
+    ...config,
+    content: { ...schedule.settings, ...config.content },
+  });
   schedulerSummary(schedule);
   lifecycleView(state);
 }
@@ -419,7 +425,9 @@ async function saveScheduler(content) {
   notice("调度配置已保存，下一次安全调度时生效");
 }
 async function activities() {
-  const rows = await api("activities");
+  const rows = (await api("activities")).filter(
+    (item) => item.kind !== "long_term_goal",
+  );
   $("activity-list").innerHTML = rows.length
     ? rows
         .map(
@@ -427,7 +435,49 @@ async function activities() {
             `<article class="row-card"><div class="row-top"><strong>${escapeHtml(x.goal)}</strong><span class="badge">${escapeHtml(labels[x.status] || x.status)}</span></div><div class="row-meta">${escapeHtml(x.kind)} · ${when(x.created_at)} · ${x.steps} 步</div>${x.checkpoint.agent?.result?.text ? `<p>${escapeHtml(x.checkpoint.agent.result.text)}</p>` : ""}${x.checkpoint.agent?.stopped_reason ? `<p class="muted">${escapeHtml(x.checkpoint.agent.stopped_reason)}</p>` : ""}<div class="button-row">${["queued", "paused", "waiting", "interrupted", "running"].includes(x.status) ? `<button data-run="${x.id}" class="primary">运行这一轮</button>` : ""}${["queued", "paused", "waiting", "interrupted"].includes(x.status) ? `<button data-claim="${x.id}">手动接取</button>` : ""}${x.status === "running" ? `<button data-transition="${x.id}" data-status="completed">标记完成</button><button data-transition="${x.id}" data-status="paused">保存并暂停</button>` : ""}${!["completed", "cancelled", "failed"].includes(x.status) ? `<button data-transition="${x.id}" data-status="cancelled">取消</button>` : ""}</div></article>`,
         )
         .join("")
-    : empty("还没有计划，可以先记下想做的事情");
+    : empty("还没有运行活动");
+}
+async function plans() {
+  const rows = await api("plans");
+  const active = rows.filter(
+    (item) => !["completed", "cancelled", "failed"].includes(item.status),
+  );
+  $("plan-summary").textContent =
+    `${active.length} 个未结束目标 · ${active.filter((item) => item.due_at).length} 个已安排时间`;
+  $("plan-list").innerHTML =
+    rows
+      .map((item) => {
+        const ended = ["completed", "cancelled", "failed"].includes(
+          item.status,
+        );
+        const runs = item.runs
+          .map(
+            (run) =>
+              `<div class="plan-run"><span>${when(run.created_at)} · ${escapeHtml(labels[run.status] || run.status)}${run.reason ? ` · ${escapeHtml(run.reason)}` : ""}</span>${run.scheduler_status === "held" ? `<button data-plan-resume="${escapeHtml(run.id)}">继续这一轮</button>` : ""}</div>`,
+          )
+          .join("");
+        return `<article class="row-card"><div class="row-top"><strong>${escapeHtml(item.goal)}</strong><span class="badge">${escapeHtml(labels[item.status] || item.status)}</span></div><div class="row-meta">${escapeHtml(item.conversation_id || "角色自己的目标")} · ${item.due_at ? `下次 ${when(item.due_at)}` : "未安排下次时间"} · 已执行 ${item.runs.length} 轮</div><dl class="memory-details"><dt>下一步</dt><dd class="plan-text">${escapeHtml(item.next_step || "尚未安排")}</dd><dt>目前进度</dt><dd class="plan-text">${escapeHtml(item.progress || "还没有进展记录")}</dd>${item.last_result ? `<dt>最近结果</dt><dd class="plan-text">${escapeHtml(item.last_result)}</dd>` : ""}</dl>${runs ? `<details><summary>执行记录（${item.runs.length}）</summary>${runs}<button data-plan-activities>查看运行活动</button></details>` : ""}${!ended ? `<div class="button-row"><button data-plan-edit="${escapeHtml(item.id)}">编辑目标</button></div>` : ""}</article>`;
+      })
+      .join("") || empty("还没有持续目标，可以先记下一件想慢慢完成的事");
+}
+function planEditor(item = null) {
+  editingPlan = item;
+  $("plan-editor").hidden = false;
+  $("plan-editor-title").textContent = item ? "编辑目标" : "新建目标";
+  $("plan-editor-version").textContent = item
+    ? `版本 ${item.version} · 已有执行尚未收尾时不能改写目标`
+    : "保存目标不会立即调用模型；需开启自动调度与到期计划。";
+  $("plan-goal").value = item?.goal || "";
+  $("plan-next").value = item?.next_step || "";
+  $("plan-next").required = !item || item.status === "waiting";
+  $("plan-conversation").value = item?.conversation_id || "";
+  $("plan-conversation").disabled = Boolean(item);
+  $("plan-due").value = localDate(item?.due_at);
+  $("plan-status").value = item?.status || "waiting";
+  $("plan-progress").value = item?.progress || "";
+  $("plan-status-field").hidden = $("plan-progress-field").hidden = !item;
+  $("plan-due").disabled = Boolean(item && item.status !== "waiting");
+  $("plan-editor").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 async function inbox() {
   const rows = await api("inbox");
@@ -585,6 +635,7 @@ function memoryEditor(item = null) {
 }
 const loaders = {
   overview,
+  plans,
   scheduler,
   activities,
   inbox,
@@ -759,7 +810,59 @@ $("activity-form").addEventListener("submit", (e) => {
     });
     $("goal").value = "";
     await activities();
-    notice("计划已保存");
+    notice("活动已保存");
+  });
+});
+$("plan-new").addEventListener("click", () => planEditor());
+$("plan-editor-close").addEventListener("click", () => {
+  $("plan-editor").hidden = true;
+});
+$("plan-status").addEventListener("change", () => {
+  const stopped = $("plan-status").value !== "waiting";
+  $("plan-next").required = !stopped;
+  $("plan-due").disabled = stopped;
+  if (stopped) $("plan-due").value = "";
+});
+$("plan-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  action(async () => {
+    const data = {
+      goal: $("plan-goal").value,
+      next_step: $("plan-next").value,
+      due_at: $("plan-due").value
+        ? new Date($("plan-due").value).toISOString()
+        : null,
+    };
+    if (editingPlan) {
+      await api(`plans/${editingPlan.id}`, "PUT", {
+        ...data,
+        expected_version: editingPlan.version,
+        progress: $("plan-progress").value,
+        status: $("plan-status").value,
+      });
+    } else {
+      await api("plans", "POST", {
+        ...data,
+        conversation_id: $("plan-conversation").value.trim() || null,
+      });
+    }
+    $("plan-editor").hidden = true;
+    await plans();
+    notice("目标已保存");
+  });
+});
+$("plan-list").addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (!button) return;
+  action(async () => {
+    if (button.dataset.planEdit)
+      planEditor(await api(`plans/${button.dataset.planEdit}`));
+    else if (button.dataset.planResume) {
+      await api(`scheduler/${button.dataset.planResume}/resume`, "POST");
+      await plans();
+      notice("已接回原来的执行轮次，累计额度保留");
+    } else if (button.hasAttribute("data-plan-activities"))
+      await navigate("activities");
   });
 });
 $("activity-list").addEventListener("click", (e) => {

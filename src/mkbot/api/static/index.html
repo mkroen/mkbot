@@ -40,13 +40,17 @@
           </button>
           <button data-view="activities">
             <span class="nav-icon" data-icon="layers"></span
-            ><span class="nav-text">活动与计划</span>
+            ><span class="nav-text">运行活动</span>
           </button>
           <button data-view="inbox">
             <span class="nav-icon" data-icon="chat"></span
             ><span class="nav-text">留言收件箱</span>
           </button>
           <p class="nav-label">角色与能力</p>
+          <button data-view="plans">
+            <span class="nav-icon" data-icon="layers"></span
+            ><span class="nav-text">目标与计划</span>
+          </button>
           <button data-view="persona">
             <span class="nav-icon" data-icon="person"></span
             ><span class="nav-text">人格配置</span>
@@ -418,16 +422,95 @@
           </section>
           <section id="activities" class="view" hidden>
             <article class="panel">
-              <h3>添加一个计划</h3>
+              <h3>添加一次活动</h3>
               <form id="activity-form" class="inline-form">
                 <input
                   id="goal"
                   required
                   placeholder="例如：继续完善昨天的漫画"
-                /><button class="primary" type="submit">保存计划</button>
+                /><button class="primary" type="submit">保存活动</button>
               </form>
             </article>
             <div id="activity-list"></div>
+          </section>
+          <section id="plans" class="view" hidden>
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>想继续做的事</h3>
+                  <p id="plan-summary" class="muted"></p>
+                </div>
+                <button id="plan-new" class="primary">新建目标</button>
+              </div>
+              <p class="muted">
+                目标会保留进度。到期后继续下一步，遇到聊天可以暂时放下；未安排时间的目标只记录，不会自动执行。
+              </p>
+            </article>
+            <article id="plan-editor" class="panel" hidden>
+              <div class="panel-heading">
+                <h3 id="plan-editor-title">新建目标</h3>
+                <button id="plan-editor-close" type="button">收起</button>
+              </div>
+              <p id="plan-editor-version" class="muted"></p>
+              <form id="plan-form">
+                <label for="plan-goal">想完成什么</label
+                ><textarea
+                  id="plan-goal"
+                  rows="2"
+                  required
+                  maxlength="2000"
+                  placeholder="例如：画一篇海边生活的四格漫画"
+                ></textarea>
+                <label for="plan-next">下一步</label
+                ><textarea
+                  id="plan-next"
+                  rows="2"
+                  required
+                  maxlength="2000"
+                  placeholder="例如：先画出四格的构图草稿"
+                ></textarea>
+                <div class="form-grid">
+                  <div>
+                    <label for="plan-conversation">所属会话</label
+                    ><input
+                      id="plan-conversation"
+                      maxlength="200"
+                      placeholder="留空表示角色自己的目标"
+                    /><small class="muted"
+                      >填写后只在这个会话中使用；执行中的最终文字回复也可能发往该会话。</small
+                    >
+                  </div>
+                  <div>
+                    <label for="plan-due">下次执行时间</label
+                    ><input id="plan-due" type="datetime-local" /><small
+                      class="muted"
+                      >使用本地时区；留空时等待之后安排。</small
+                    >
+                  </div>
+                  <div id="plan-status-field" hidden>
+                    <label for="plan-status">目标状态</label
+                    ><select id="plan-status">
+                      <option value="waiting">待继续</option>
+                      <option value="paused">暂时搁置</option>
+                      <option value="completed">已完成</option>
+                      <option value="cancelled">已取消</option>
+                    </select>
+                  </div>
+                </div>
+                <div id="plan-progress-field" hidden>
+                  <label for="plan-progress">目前进度</label
+                  ><textarea
+                    id="plan-progress"
+                    rows="3"
+                    maxlength="4000"
+                  ></textarea>
+                </div>
+                <div class="button-row">
+                  <button class="primary" type="submit">保存目标</button>
+                </div>
+              </form>
+            </article>
+            <div id="plan-list"></div>
           </section>
           <section id="inbox" class="view" hidden>
             <article class="panel">

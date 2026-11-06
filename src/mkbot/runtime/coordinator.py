@@ -11,6 +11,7 @@ from mkbot.domain.errors import AdmissionDenied, Conflict, ContextInvalidated, N
 from mkbot.domain.models import ActivityRequest, ReviewDecision, SleepRequest
 from mkbot.runtime.clock import timestamp
 from mkbot.runtime.lifecycle import audit
+from mkbot.runtime.planning import PlanOutcome
 from mkbot.runtime.scheduling import ChatChoice, IdleWait, SchedulerSettings
 from mkbot.storage.database import encode
 
@@ -296,6 +297,13 @@ class Coordinator:
             return
         now = timestamp(self.clock.now())
         with self.db.transaction() as tx:
+            plan_valid = self.k.plans.finish_in(
+                tx,
+                activity_id,
+                PlanOutcome.model_validate(decision["data"])
+                if decision and decision["kind"] == "plan"
+                else None,
+            )
             if jobs and jobs[0]["lane"] == "chat":
                 ids = [
                     row[0]
@@ -342,7 +350,7 @@ class Coordinator:
                         ),
                     ),
                 )
-            decision_status = "applied"
+            decision_status = "invalidated" if plan_valid is False else "applied"
             if decision and decision["kind"] == "sleep":
                 request = SleepRequest.model_validate(decision["data"])
                 state = tx.execute("SELECT * FROM characters WHERE id='main'").fetchone()
@@ -367,6 +375,7 @@ class Coordinator:
         self._finish_waking()
 
     def _reconcile(self) -> None:
+        self.k.plans.reconcile()
         for row in self.db.rows(
             "SELECT j.*,a.status AS activity_status FROM scheduler_jobs j "
             "JOIN activities a ON a.id=j.activity_id WHERE j.status!='done'"
@@ -433,6 +442,7 @@ class Coordinator:
     def _adopt_plans(self) -> None:
         if not self.settings().run_plans or self.k.lifecycle.state()["phase"] != "awake":
             return
+        self.k.plans.dispatch_due()
         now = timestamp(self.clock.now())
         with self.db.transaction() as tx:
             tx.execute(
@@ -520,6 +530,9 @@ class Coordinator:
                 continue
             due.append(row["due_at"] or timestamp(now))
         if settings.run_plans and phase["phase"] == "awake" and not candidates:
+            plan_due = self.k.plans.next_at()
+            if plan_due:
+                due.append(plan_due)
             future = self.db.rows(
                 "SELECT min(coalesce(a.due_at,?)) AS due FROM activities a "
                 "LEFT JOIN scheduler_jobs j ON j.activity_id=a.id "

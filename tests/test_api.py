@@ -30,6 +30,7 @@ def test_all_management_routes_require_auth(client):
         "config/memory",
         "scheduler",
         "statistics",
+        "plans",
     ):
         assert client.get(f"/api/{path}").status_code == 401
     assert client.get("/healthz").json()["status"] == "ok"
@@ -40,6 +41,40 @@ def test_all_management_routes_require_auth(client):
     assert TOKEN not in response.text
     client.headers["Authorization"] = f"Bearer {TOKEN}"
     assert client.get("/api/status").status_code == 200
+
+
+def test_plan_crud_rejects_stale_revision_and_audience_changes(client, clock):
+    body = {
+        "goal": "画一张日常漫画",
+        "next_step": "先想一个主题",
+        "conversation_id": "private:alice",
+    }
+    response = client.post("/api/plans", json=body)
+    assert response.status_code == 201
+    item = response.json()
+    assert item["due_at"] is None and item["status"] == "waiting"
+    assert client.get("/api/plans").json()[0]["id"] == item["id"]
+    edit = {
+        "goal": body["goal"],
+        "next_step": "开始画草图",
+        "expected_version": item["version"],
+        "progress": "已有主题",
+        "due_at": (clock.now() + timedelta(hours=1)).isoformat(),
+    }
+    assert (
+        client.put(
+            f"/api/plans/{item['id']}", json=edit | {"conversation_id": "group:all"}
+        ).status_code
+        == 422
+    )
+    changed = client.put(f"/api/plans/{item['id']}", json=edit)
+    assert changed.status_code == 200
+    assert changed.json()["conversation_id"] == "private:alice"
+    assert client.put(f"/api/plans/{item['id']}", json=edit).status_code == 409
+    assert client.post(f"/api/activities/{item['id']}/run").status_code == 409
+    client.headers.pop("Authorization")
+    assert client.post("/api/plans", json=body).status_code == 401
+    assert client.put(f"/api/plans/{item['id']}", json=edit).status_code == 401
 
 
 def test_sleep_receive_wake_and_selective_review(client, clock):

@@ -14,6 +14,7 @@ from mkbot.models.gateway import ModelGateway
 from mkbot.plugins.life import life_plugin
 from mkbot.plugins.memory import memory_plugin
 from mkbot.plugins.notebook import notebook_plugin
+from mkbot.plugins.plans import plans_plugin
 from mkbot.plugins.registry import PluginRegistry
 from mkbot.runtime.activities import ActivityService
 from mkbot.runtime.agent import AgentLoop, ExecutionSettings
@@ -21,6 +22,7 @@ from mkbot.runtime.clock import Clock, SystemClock
 from mkbot.runtime.coordinator import Coordinator
 from mkbot.runtime.inbox import InboxService
 from mkbot.runtime.lifecycle import Lifecycle
+from mkbot.runtime.plans import PlanService
 from mkbot.runtime.scheduling import SchedulerSettings
 from mkbot.storage.config import ConfigStore
 from mkbot.storage.database import Database
@@ -74,6 +76,7 @@ class Kernel:
             except NotFound:
                 self.config.put("scheduler", SchedulerSettings().model_dump(mode="json"), 0)
             self.memory = MemoryService(self.lifecycle, self.config)
+            self.plans = PlanService(self)
             self.models = ModelGateway(self.lifecycle, self.config, self.budgets)
             self.models.context_validator = self.assert_context
             self.plugins = PluginRegistry(self.lifecycle, self.models)
@@ -87,6 +90,7 @@ class Kernel:
             self.agent = AgentLoop(self)
             self.scheduler = Coordinator(self)
             self.plugins.register(life_plugin(self.scheduler))
+            self.plugins.register(plans_plugin(self.plans))
         except BaseException:
             if hasattr(self, "db"):
                 self.db.close()

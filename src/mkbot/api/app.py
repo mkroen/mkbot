@@ -27,6 +27,7 @@ from mkbot.models.contracts import GatewaySettings
 from mkbot.runtime.agent import ExecutionSettings
 from mkbot.runtime.clock import Clock
 from mkbot.runtime.kernel import Kernel
+from mkbot.runtime.planning import ManualPlan, PlanEdit
 from mkbot.runtime.scheduling import SchedulerSettings
 
 
@@ -210,6 +211,22 @@ def create_app(data_dir: Path, token: str, *, clock: Clock | None = None) -> Fas
     @app.get("/api/activities")
     async def activities(k: KernelDependency):
         return k.activities.list()
+
+    @app.get("/api/plans")
+    async def plans(k: KernelDependency):
+        return k.plans.list()
+
+    @app.post("/api/plans", status_code=201)
+    async def create_plan(request: ManualPlan, k: KernelDependency):
+        return k.plans.create(request)
+
+    @app.get("/api/plans/{plan_id}")
+    async def plan_detail(plan_id: str, k: KernelDependency):
+        return k.plans.get(plan_id)
+
+    @app.put("/api/plans/{plan_id}")
+    async def edit_plan(plan_id: str, request: PlanEdit, k: KernelDependency):
+        return k.plans.edit(plan_id, request)
 
     @app.post("/api/activities/{activity_id}/run")
     async def run_activity(activity_id: str, k: KernelDependency):
