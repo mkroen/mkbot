@@ -44,6 +44,7 @@ def intersection(scopes: list[list[str]]) -> list[str]:
 
 class MemoryService:
     def __init__(self, lifecycle: Lifecycle, config: ConfigStore) -> None:
+        self.on_invalidate = None
         self.lifecycle, self.db, self.clock, self.config = (
             lifecycle,
             lifecycle.db,
@@ -261,6 +262,7 @@ class MemoryService:
         *,
         activity_id: str | None = None,
         operator: bool = False,
+        pending: bool = False,
     ) -> str:
         if not operator and not activity_id:
             raise ValueError("记忆提议需要真实活动或操作者身份")
@@ -272,7 +274,13 @@ class MemoryService:
         if not operator:
             self.lifecycle.check_admission(tx, activity_id)
         roots, parents, use_scopes, disclosure_scopes = {}, [], [], []
-        for ref in proposal.source_refs:
+        refs = set(proposal.source_refs)
+        if not operator:
+            self._assert_context(tx, activity_id)
+            # 模型不能只引用一条公开资料，洗掉实际上下文中的私人来源。
+            refs.update(self.source_references(activity_id))
+            refs.update("memory:" + ref["id"] for ref in self.references(activity_id))
+        for ref in sorted(refs):
             if ref.startswith("memory:"):
                 parent = self._row(tx, ref[7:])
                 if not self._usable(parent, audience) and not operator:
@@ -338,8 +346,8 @@ class MemoryService:
             "INSERT INTO "
             "memories(id,kind,subjects,content,tier,origin_scope,use_scope,disclosure_scope,"
             "confidence,importance,occurred_at,valid_from,valid_until,activation_at,created_at,upd"
-            "ated_at) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "ated_at,status) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 memory_id,
                 proposal.kind,
@@ -357,6 +365,7 @@ class MemoryService:
                 now,
                 now,
                 now,
+                "pending" if pending else "active",
             ),
         )
         tx.executemany(
@@ -419,6 +428,8 @@ class MemoryService:
         return found
 
     def _invalidate(self, tx, ids: set[str], reason: str) -> None:
+        if self.on_invalidate:
+            self.on_invalidate(tx, ids)
         affected = set()
         for memory_id in ids:
             affected.update(

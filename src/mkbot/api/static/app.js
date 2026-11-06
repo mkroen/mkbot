@@ -13,6 +13,12 @@ let memoryRevision = 0;
 let editingMemory = null;
 let forgettingMemory = null;
 let editingPlan = null;
+let peopleOffset = 0;
+let selectedPerson = null;
+let editingPerson = null;
+let personRequest = 0;
+let relationshipRevision = 0;
+let relationshipContent = {};
 const titles = {
   overview: "运行概览",
   scheduler: "调度与作息",
@@ -21,6 +27,7 @@ const titles = {
   inbox: "留言收件箱",
   persona: "人格配置",
   memory: "记忆与画像",
+  people: "人物关系",
   models: "模型与路由",
   plugins: "能力插件",
   usage: "资源额度",
@@ -121,6 +128,7 @@ const descriptions = {
   inbox: "按会话查看留言与审阅结果，无需逐条回应。",
   persona: "定义角色是谁、如何表达，以及对什么感兴趣。",
   memory: "管理相处中的记忆、来源和分享边界。",
+  people: "看看认识的人、相处的变化，以及彼此的边界。",
   plugins: "通过能力描述和工具，让角色学会新的技能。",
   scheduler: "安排清醒时的活动，留出等待和休息的时间。",
   models: "统一管理主会话与能力调用的模型、价格和备用路由。",
@@ -132,6 +140,8 @@ const iconPaths = {
   layers: '<path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/>',
   chat: '<path d="M4 4h16v12H9l-5 4V4Z"/><path d="M8 8h8M8 12h5"/>',
   person: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>',
+  people:
+    '<circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 4v3"/>',
   memory:
     '<path d="M8 3h8l5 5v8l-5 5H8l-5-5V8Z"/><circle cx="12" cy="12" r="3"/><path d="M12 3v6m0 6v6M3 12h6m6 0h6"/>',
   cube: '<path d="m12 3 9 5v9l-9 5-9-5V8l9-5Zm-9 5 9 5 9-5m-9 5v9M7 5l10 6"/>',
@@ -633,6 +643,143 @@ function memoryEditor(item = null) {
   $("memory-sharing").checked = false;
   $("memory-editor").scrollIntoView({ behavior: "smooth", block: "start" });
 }
+const relationshipAxes = {
+  familiarity: "熟悉程度",
+  affinity: "亲近倾向",
+  trust: "信任倾向",
+};
+function relationshipScores(scores) {
+  return Object.entries(relationshipAxes)
+    .map(([axis, label]) => {
+      const value = Number(scores[axis]);
+      const minimum = axis === "familiarity" ? 0 : -100;
+      return `<div class="relationship-score"><span>${label}</span><strong>${value}</strong><meter min="${minimum}" max="100" value="${value}" aria-label="${label} ${value}"></meter><small>${minimum} ～ 100</small></div>`;
+    })
+    .join("");
+}
+function renderPerson(item) {
+  $("person-name").textContent =
+    selectedPerson.label || selectedPerson.subject_id;
+  $("person-identity").textContent = selectedPerson.subject_id;
+  $("person-version").textContent = `版本 ${selectedPerson.version}`;
+  $("person-scores").innerHTML = relationshipScores(item.scores);
+  $("person-preview-caption").textContent = item.audience
+    ? `当前范围：${item.audience} · 仅显示该受众可用的关系依据。`
+    : "管理者总览包含各个会话的有效依据。角色聊天时会按受众重新筛选。";
+  $("person-changes").innerHTML =
+    item.changes
+      .map((change) => {
+        let status = change.status === "pending" ? "等待本轮完成" : "已记录";
+        if (change.status === "discarded") status = "未采用";
+        else if (change.status === "applied" && !change.evidence_valid)
+          status = "依据已失效";
+        else if (change.status === "applied" && !change.contributes)
+          status = "已被新基准替代";
+        const requested = change.status === "pending";
+        const scores = Object.entries(relationshipAxes)
+          .map(([axis, label]) => {
+            const value = Number(
+              requested ? change.requested[axis] : change[axis],
+            );
+            return `${label} ${change.kind === "delta" && value > 0 ? "+" : ""}${value}`;
+          })
+          .join(" · ");
+        return `<div class="relationship-change"><div class="row-top"><strong>${change.kind === "baseline" ? "人工设定基准" : "相处中的变化"}</strong><span class="badge">${status}</span></div><p>${escapeHtml(change.reason)}</p><div class="row-meta">${escapeHtml(scores)}<br>${when(change.applied_at || change.created_at)} · ${escapeHtml(change.use_scope.join("、"))}</div></div>`;
+      })
+      .join("") || empty("这个范围里还没有可用的关系记录");
+}
+async function selectPerson(subject) {
+  const request = ++personRequest;
+  const changed = selectedPerson?.subject_id !== subject;
+  const item = await api(`people/${encodeURIComponent(subject)}`);
+  if (request !== personRequest) return;
+  selectedPerson = item;
+  if (changed) {
+    $("person-preview-mode").value = "all";
+    $("person-audience-field").hidden = true;
+    $("person-audience").required = false;
+  }
+  $("person-detail").hidden = false;
+  $("person-empty").hidden = true;
+  document.querySelectorAll("[data-person]").forEach((button) => {
+    const selected = button.dataset.person === subject;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
+  const mode = $("person-preview-mode").value;
+  const audience =
+    mode === "self" ? "@self" : $("person-audience").value.trim();
+  const view =
+    mode === "all"
+      ? item
+      : await api(
+          `people/${encodeURIComponent(subject)}?${new URLSearchParams({ audience })}`,
+        );
+  if (request === personRequest) renderPerson(view);
+}
+async function peopleList() {
+  const params = new URLSearchParams({
+    query: $("people-query").value.trim(),
+    offset: String(peopleOffset),
+  });
+  const rows = await api(`people?${params}`);
+  $("people-list").innerHTML =
+    rows
+      .map(
+        (item) =>
+          `<button class="person-entry" data-person="${escapeHtml(item.subject_id)}"><span class="person-avatar">${icon("person")}</span><span><strong>${escapeHtml(item.label || item.subject_id)}</strong><small>${escapeHtml(item.subject_id)}</small><small>熟悉 ${Number(item.scores.familiarity)} · 亲近 ${Number(item.scores.affinity)}</small></span></button>`,
+      )
+      .join("") || empty("还没有匹配的人物");
+  $("people-count").textContent = `本页 ${rows.length} 人`;
+  $("people-page").textContent = `第 ${peopleOffset / 50 + 1} 页`;
+  $("people-prev").disabled = peopleOffset === 0;
+  $("people-next").disabled = rows.length < 50;
+  const chosen =
+    rows.find((item) => item.subject_id === selectedPerson?.subject_id) ||
+    rows[0];
+  if (chosen) await selectPerson(chosen.subject_id);
+  else {
+    personRequest++;
+    selectedPerson = null;
+    $("person-detail").hidden = true;
+    $("person-empty").hidden = false;
+  }
+}
+function fillRelationshipSettings(config) {
+  relationshipRevision = config.revision;
+  relationshipContent = config.content;
+  $("relationship-version").textContent = `版本 ${config.revision}`;
+  $("relationship-auto").checked = config.content.automatic_updates;
+  $("relationship-bonus").value = config.content.attention_bonus;
+  for (const axis of Object.keys(relationshipAxes))
+    for (const period of ["step", "daily"]) {
+      $(`relationship-${axis}-${period}`).value =
+        config.content[`${axis}_${period}`];
+    }
+}
+async function people() {
+  const [config] = await Promise.all([
+    api("config/relationships"),
+    peopleList(),
+  ]);
+  fillRelationshipSettings(config);
+}
+function personEditor(item = null) {
+  editingPerson = item;
+  $("person-editor").hidden = false;
+  $("person-editor-title").textContent = item ? "调整关系基准" : "登记人物";
+  $("person-editor-version").textContent = item
+    ? `基于版本 ${item.version}`
+    : "初次登记";
+  $("person-id").value = item?.subject_id || "";
+  $("person-id").disabled = Boolean(item);
+  $("person-label").value = item?.label || "";
+  for (const axis of Object.keys(relationshipAxes))
+    $(`person-${axis}`).value = item?.scores[axis] ?? 0;
+  $("person-scope").value = "@self";
+  $("person-reason").value = "";
+  $("person-editor").scrollIntoView({ behavior: "smooth", block: "start" });
+}
 const loaders = {
   overview,
   plans,
@@ -641,6 +788,7 @@ const loaders = {
   inbox,
   persona,
   memory,
+  people,
   models,
   plugins,
   usage,
@@ -1088,6 +1236,102 @@ $("memory-settings-form").addEventListener("submit", (e) => {
     memoryRevision = config.revision;
     $("memory-settings-version").textContent = `版本 ${memoryRevision}`;
     notice("记忆规则已保存");
+  });
+});
+$("people-filter").addEventListener("submit", (e) => {
+  e.preventDefault();
+  peopleOffset = 0;
+  action(peopleList);
+});
+$("people-prev").addEventListener("click", () => {
+  peopleOffset = Math.max(0, peopleOffset - 50);
+  action(peopleList);
+});
+$("people-next").addEventListener("click", () => {
+  peopleOffset += 50;
+  action(peopleList);
+});
+$("people-list").addEventListener("click", (e) => {
+  const button = e.target.closest("[data-person]");
+  if (button) action(() => selectPerson(button.dataset.person));
+});
+$("person-new").addEventListener("click", () => personEditor());
+$("person-editor-close").addEventListener("click", () => {
+  $("person-editor").hidden = true;
+});
+$("person-edit").addEventListener("click", () =>
+  action(async () => {
+    personEditor(
+      await api(`people/${encodeURIComponent(selectedPerson.subject_id)}`),
+    );
+  }),
+);
+$("person-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  action(async () => {
+    const subject = $("person-id").value.trim();
+    const payload = {
+      expected_version: editingPerson?.version ?? 0,
+      label: $("person-label").value.trim(),
+      reason: $("person-reason").value,
+      scope: splitIds($("person-scope").value),
+    };
+    for (const axis of Object.keys(relationshipAxes))
+      payload[axis] = Number($(`person-${axis}`).value);
+    selectedPerson = await api(
+      `people/${encodeURIComponent(subject)}`,
+      "PUT",
+      payload,
+    );
+    $("person-editor").hidden = true;
+    $("person-preview-mode").value = "all";
+    $("person-audience-field").hidden = true;
+    $("person-audience").required = false;
+    $("people-query").value = subject;
+    peopleOffset = 0;
+    await peopleList();
+    notice("已保存关系基准，后续变化从此开始。");
+  });
+});
+$("person-preview-mode").addEventListener("change", () => {
+  const conversation = $("person-preview-mode").value === "conversation";
+  $("person-audience-field").hidden = !conversation;
+  $("person-audience").required = conversation;
+});
+$("person-preview-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  if (selectedPerson) action(() => selectPerson(selectedPerson.subject_id));
+});
+$("person-memories").addEventListener("click", () =>
+  action(async () => {
+    $("memory-subject").value = selectedPerson.subject_id;
+    $("memory-tier").value = "";
+    $("memory-status").value = "active";
+    memoryOffset = 0;
+    await navigate("memory");
+  }),
+);
+$("relationship-settings-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  action(async () => {
+    const content = {
+      ...relationshipContent,
+      automatic_updates: $("relationship-auto").checked,
+      attention_bonus: Number($("relationship-bonus").value),
+    };
+    for (const axis of Object.keys(relationshipAxes))
+      for (const period of ["step", "daily"]) {
+        content[`${axis}_${period}`] = Number(
+          $(`relationship-${axis}-${period}`).value,
+        );
+      }
+    fillRelationshipSettings(
+      await api("config/relationships", "PUT", {
+        expected_revision: relationshipRevision,
+        content,
+      }),
+    );
+    notice("已保存关系变化规则。");
   });
 });
 if (token)

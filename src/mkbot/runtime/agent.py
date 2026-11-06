@@ -227,6 +227,18 @@ class AgentLoop:
                 k.memory.select_sources(
                     activity["id"], [record["source_ref"] for record in records]
                 )
+                subjects = [
+                    record["subject_id"]
+                    for record in sorted(records, key=lambda item: not item["assigned"])
+                ]
+                relationships = k.relationships.context(activity["id"], subjects)
+                if relationships:
+                    messages.append(
+                        Message(
+                            role="user",
+                            content="当前受众可用的人物关系与边界资料：\n" + encode(relationships),
+                        )
+                    )
                 messages.append(
                     Message(role="user", content="当前会话的最近记录：\n" + encode(records))
                 )
@@ -291,6 +303,7 @@ class AgentLoop:
         if not activity["conversation_id"]:
             k.memory.commit_uses(activity_id)
         k.scheduler.finish(activity_id)
+        k.relationships.commit(activity_id)
         return {"status": "completed", "result": state["result"]}
 
     async def _run(self, activity_id: str) -> dict:

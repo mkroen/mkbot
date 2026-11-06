@@ -10,7 +10,7 @@ from typing import Any
 
 from mkbot.domain.errors import UnsupportedSchema
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 SCHEMA = """
 CREATE TABLE characters (
@@ -241,6 +241,31 @@ CREATE INDEX plan_runs_parent ON plan_runs(plan_id,applied);
 """
 
 
+RELATIONSHIP_SCHEMA = """
+CREATE TABLE people (
+    subject_id TEXT PRIMARY KEY, label TEXT NOT NULL DEFAULT '',
+    version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE relationship_changes (
+    id TEXT PRIMARY KEY, subject_id TEXT NOT NULL REFERENCES people(subject_id),
+    kind TEXT NOT NULL, memory_id TEXT NOT NULL REFERENCES memories(id),
+    memory_revision INTEGER NOT NULL,
+    activity_id TEXT REFERENCES activities(id), root_id TEXT REFERENCES activities(id),
+    status TEXT NOT NULL, requested TEXT NOT NULL DEFAULT '{}', baseline_id TEXT,
+    familiarity REAL NOT NULL DEFAULT 0, affinity REAL NOT NULL DEFAULT 0,
+    trust REAL NOT NULL DEFAULT 0, created_at TEXT NOT NULL, applied_at TEXT,
+    UNIQUE(root_id,subject_id)
+);
+CREATE TABLE relationship_triggers (
+    subject_id TEXT NOT NULL REFERENCES people(subject_id),
+    event_id TEXT NOT NULL REFERENCES events(id),
+    change_id TEXT NOT NULL REFERENCES relationship_changes(id), PRIMARY KEY(subject_id,event_id)
+);
+CREATE INDEX relationship_person ON relationship_changes(subject_id,status,applied_at);
+CREATE INDEX relationship_memory ON relationship_changes(memory_id);
+"""
+
+
 def encode(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
@@ -291,6 +316,11 @@ class Database:
         if version == 5:
             self.connection.executescript(
                 "BEGIN IMMEDIATE;\n" + PLANS_SCHEMA + "\nPRAGMA user_version=6;\nCOMMIT;"
+            )
+            version = 6
+        if version == 6:
+            self.connection.executescript(
+                "BEGIN IMMEDIATE;\n" + RELATIONSHIP_SCHEMA + "\nPRAGMA user_version=7;\nCOMMIT;"
             )
 
     @contextmanager

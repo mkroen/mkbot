@@ -6,6 +6,7 @@ from pathlib import Path
 
 from mkbot.accounting.budgets import BudgetManager
 from mkbot.actions.outbox import Outbox
+from mkbot.character.relationships import RelationshipService, RelationshipSettings
 from mkbot.domain.errors import NotFound
 from mkbot.memory.contracts import MemorySettings
 from mkbot.memory.service import MemoryService
@@ -16,6 +17,7 @@ from mkbot.plugins.memory import memory_plugin
 from mkbot.plugins.notebook import notebook_plugin
 from mkbot.plugins.plans import plans_plugin
 from mkbot.plugins.registry import PluginRegistry
+from mkbot.plugins.relationships import relationships_plugin
 from mkbot.runtime.activities import ActivityService
 from mkbot.runtime.agent import AgentLoop, ExecutionSettings
 from mkbot.runtime.clock import Clock, SystemClock
@@ -76,6 +78,12 @@ class Kernel:
             except NotFound:
                 self.config.put("scheduler", SchedulerSettings().model_dump(mode="json"), 0)
             self.memory = MemoryService(self.lifecycle, self.config)
+            try:
+                self.config.get("relationships")
+            except NotFound:
+                self.config.put("relationships", RelationshipSettings().model_dump(mode="json"), 0)
+            self.relationships = RelationshipService(self)
+            self.memory.on_invalidate = self.relationships.invalidate_refs
             self.plans = PlanService(self)
             self.models = ModelGateway(self.lifecycle, self.config, self.budgets)
             self.models.context_validator = self.assert_context
@@ -86,11 +94,12 @@ class Kernel:
             self.plugins.register(memory_plugin())
             self.outbox.context_validator = self.assert_context
             self.outbox.context_provider = self.memory.references
-            self.outbox.on_sent = self.memory.commit_uses
+            self.outbox.on_sent = self.on_sent
             self.agent = AgentLoop(self)
             self.scheduler = Coordinator(self)
             self.plugins.register(life_plugin(self.scheduler))
             self.plugins.register(plans_plugin(self.plans))
+            self.plugins.register(relationships_plugin(self.relationships))
         except BaseException:
             if hasattr(self, "db"):
                 self.db.close()
@@ -103,6 +112,11 @@ class Kernel:
 
     def notify(self) -> None:
         self._changed.set()
+
+    def on_sent(self, activity_id: str) -> None:
+        self.relationships.commit(activity_id)
+        self.memory.commit_uses(activity_id)
+        self.notify()
 
     async def run_timers(self) -> None:
         """兼容管理入口；统一由协调器等待来信、唤醒和持久期限。"""

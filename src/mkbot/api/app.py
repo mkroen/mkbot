@@ -14,6 +14,7 @@ from pydantic import Field
 
 from mkbot import __version__
 from mkbot.accounting.statistics import overview
+from mkbot.character.relationships import RelationshipEdit, RelationshipSettings
 from mkbot.domain.errors import AdmissionDenied, Conflict, MkbotError, NotFound
 from mkbot.domain.models import (
     ActivityRequest,
@@ -216,6 +217,26 @@ def create_app(data_dir: Path, token: str, *, clock: Clock | None = None) -> Fas
     async def plans(k: KernelDependency):
         return k.plans.list()
 
+    @app.get("/api/people")
+    async def people(
+        k: KernelDependency,
+        query: str = Query(default="", max_length=120),
+        offset: int = Query(default=0, ge=0),
+    ):
+        return k.relationships.list(query, offset)
+
+    @app.get("/api/people/{subject:path}")
+    async def person(
+        subject: str,
+        k: KernelDependency,
+        audience: str | None = Query(default=None, max_length=200),
+    ):
+        return k.relationships.get(subject, audience)
+
+    @app.put("/api/people/{subject:path}")
+    async def edit_person(subject: str, request: RelationshipEdit, k: KernelDependency):
+        return k.relationships.edit(subject, request)
+
     @app.post("/api/plans", status_code=201)
     async def create_plan(request: ManualPlan, k: KernelDependency):
         return k.plans.create(request)
@@ -351,6 +372,10 @@ def create_app(data_dir: Path, token: str, *, clock: Clock | None = None) -> Fas
             request.content = MemorySettings.model_validate(request.content).model_dump(mode="json")
         if name == "scheduler":
             request.content = SchedulerSettings.model_validate(request.content).model_dump(
+                mode="json"
+            )
+        if name == "relationships":
+            request.content = RelationshipSettings.model_validate(request.content).model_dump(
                 mode="json"
             )
         result = k.config.put(name, request.content, request.expected_revision)

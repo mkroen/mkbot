@@ -166,7 +166,9 @@ class Coordinator:
             "newest,"
             "max(e.kind='private') AS private,max(json_extract(e.payload,'$.directed')) "
             "AS directed,"
-            "max(i.status='deferred') AS deferred,count(*) AS count FROM events e "
+            "max(i.status='deferred') AS deferred,count(*) AS count,"
+            "json_group_array(DISTINCT json_object('source',e.source,'sender',e.sender_id)) AS "
+            "participants FROM events e "
             "JOIN inbox i ON i.event_id=e.id LEFT JOIN inbox_leases l ON l.event_id=e.id "
             "WHERE l.event_id IS NULL AND (i.status='pending' OR "
             "(i.status='deferred' AND i.revisit_at<=?)) GROUP BY e.conversation_id",
@@ -198,7 +200,14 @@ class Coordinator:
             row["ready_at"] = timestamp(ready)
             age = max(0, (now - oldest).total_seconds())
             # 老请求逐渐提高优先级，普通群不会永远被后到消息挤走。
-            row["score"] = (100 if row["directed"] else 80 if row["private"] else 20) + age / 60
+            row["relationship_bonus"] = self.k.relationships.attention(
+                json.loads(row.pop("participants"))
+            )
+            row["score"] = (
+                (100 if row["directed"] else 80 if row["private"] else 20)
+                + age / 60
+                + row["relationship_bonus"]
+            )
         return sorted(rows, key=lambda row: (-row["score"], row["oldest"], row["conversation_id"]))
 
     def _claim_batch(self, conversation_id: str) -> str:
@@ -225,7 +234,7 @@ class Coordinator:
                     origin="user",
                     conversation_id=conversation_id,
                     trigger_event_ids=ids,
-                    goal="查看本次分配的留言，结合当前会话、人物记忆、时效与后续取消情况，"
+                    goal="查看本次分配的留言，结合当前会话、人物记忆与关系边界、时效与后续取消情况，"
                     "选择回复、不回复、暂缓或过期。无需逐句回应；用 life__review 保存明确决定。",
                 ),
             )
@@ -375,6 +384,7 @@ class Coordinator:
         self._finish_waking()
 
     def _reconcile(self) -> None:
+        self.k.relationships.reconcile()
         self.k.plans.reconcile()
         for row in self.db.rows(
             "SELECT j.*,a.status AS activity_status FROM scheduler_jobs j "

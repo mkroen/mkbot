@@ -59,6 +59,10 @@
             <span class="nav-icon" data-icon="memory"></span
             ><span class="nav-text">记忆与画像</span>
           </button>
+          <button data-view="people">
+            <span class="nav-icon" data-icon="people"></span
+            ><span class="nav-text">人物关系</span>
+          </button>
           <button data-view="plugins">
             <span class="nav-icon" data-icon="cube"></span
             ><span class="nav-text">能力插件</span>
@@ -581,6 +585,282 @@
                   </div>
                 </form>
               </details>
+            </article>
+          </section>
+          <section id="people" class="view" hidden>
+            <article class="panel">
+              <div class="panel-heading">
+                <div><h3>在相处中慢慢熟悉</h3></div>
+                <button id="person-new" class="primary">登记人物</button>
+              </div>
+              <p class="muted">
+                记录角色对每个人的熟悉程度、亲近倾向和信任，以及这些判断来自什么经历。0
+                表示尚无明显倾向。
+              </p>
+              <form id="people-filter" class="inline-form">
+                <input
+                  id="people-query"
+                  aria-label="搜索人物"
+                  maxlength="120"
+                  placeholder="搜索备注或人物 ID"
+                />
+                <button type="submit">搜索</button>
+              </form>
+            </article>
+            <article id="person-editor" class="panel" hidden>
+              <div class="panel-heading">
+                <h3 id="person-editor-title">登记人物</h3>
+                <button id="person-editor-close" type="button">收起</button>
+              </div>
+              <p class="muted">
+                保存后以这里的数值作为新的关系基准，后续相处再逐渐变化。调整关系不会授予管理权限。
+              </p>
+              <form id="person-form">
+                <div class="form-grid">
+                  <div>
+                    <label for="person-id">人物 ID</label
+                    ><input
+                      id="person-id"
+                      required
+                      maxlength="250"
+                      placeholder="平台 / 用户 ID，例如 qq/alice"
+                    />
+                  </div>
+                  <div>
+                    <label for="person-label">管理备注</label
+                    ><input
+                      id="person-label"
+                      maxlength="120"
+                      placeholder="仅方便在面板中辨认"
+                    />
+                  </div>
+                  <div>
+                    <label for="person-familiarity">熟悉程度（0～100）</label
+                    ><input
+                      id="person-familiarity"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="any"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label for="person-affinity">亲近倾向（−100～100）</label
+                    ><input
+                      id="person-affinity"
+                      type="number"
+                      min="-100"
+                      max="100"
+                      step="any"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label for="person-trust">信任倾向（−100～100）</label
+                    ><input
+                      id="person-trust"
+                      type="number"
+                      min="-100"
+                      max="100"
+                      step="any"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label for="person-scope">基准与理由的可用范围</label
+                    ><input
+                      id="person-scope"
+                      required
+                      placeholder="@self、会话 ID 或 *；逗号分隔"
+                    />
+                  </div>
+                </div>
+                <label for="person-reason">调整依据</label
+                ><textarea
+                  id="person-reason"
+                  rows="3"
+                  required
+                  maxlength="1500"
+                  placeholder="说明这次关系设定的依据"
+                ></textarea>
+                <p class="muted small-copy">
+                  @self 仅供角色独处时使用；具体会话 ID 限于该会话；*
+                  允许跨会话使用。管理备注不会传给模型。
+                </p>
+                <div class="button-row">
+                  <button class="primary" type="submit">保存关系基准</button
+                  ><span id="person-editor-version" class="muted"></span>
+                </div>
+              </form>
+            </article>
+            <div class="people-layout">
+              <article class="panel people-directory">
+                <div class="panel-heading">
+                  <h3>认识的人</h3>
+                  <span id="people-count" class="badge"></span>
+                </div>
+                <div id="people-list"></div>
+                <div class="button-row people-pagination">
+                  <button id="people-prev">上一页</button
+                  ><span id="people-page" class="muted"></span
+                  ><button id="people-next">下一页</button>
+                </div>
+              </article>
+              <article class="panel">
+                <div id="person-empty" class="empty">
+                  选择一个人物，看看相处的变化。
+                </div>
+                <div id="person-detail" hidden>
+                  <div class="panel-heading">
+                    <div>
+                      <h3 id="person-name"></h3>
+                      <p id="person-identity" class="row-meta"></p>
+                    </div>
+                    <span id="person-version" class="badge"></span>
+                  </div>
+                  <form id="person-preview-form" class="person-preview-form">
+                    <div>
+                      <label for="person-preview-mode">查看范围</label
+                      ><select id="person-preview-mode">
+                        <option value="all">管理者总览</option>
+                        <option value="self">角色独处</option>
+                        <option value="conversation">指定群聊或私聊</option>
+                      </select>
+                    </div>
+                    <div id="person-audience-field" hidden>
+                      <label for="person-audience">受众会话 ID</label
+                      ><input
+                        id="person-audience"
+                        placeholder="例如 private:alice 或 group:friends"
+                        maxlength="200"
+                      />
+                    </div>
+                    <button type="submit">查看</button>
+                  </form>
+                  <p id="person-preview-caption" class="muted small-copy"></p>
+                  <div id="person-scores" class="relationship-scores"></div>
+                  <div class="button-row">
+                    <button id="person-edit">调整关系基准</button
+                    ><button id="person-memories">查看此人的记忆</button>
+                  </div>
+                  <div class="section-heading">
+                    <h3>关系变化</h3>
+                    <span class="panel-kicker">最近 50 条</span>
+                  </div>
+                  <div id="person-changes"></div>
+                </div>
+              </article>
+            </div>
+            <article class="panel">
+              <div class="panel-heading">
+                <h3>关系变化规则</h3>
+                <span id="relationship-version" class="badge"></span>
+              </div>
+              <p class="muted">
+                只在真实互动带来变化时记录。单次幅度和滚动 24
+                小时累计幅度都有限制，反复查看人物资料不会加分。
+              </p>
+              <form id="relationship-settings-form">
+                <label class="check-label"
+                  ><input
+                    id="relationship-auto"
+                    type="checkbox"
+                  />允许角色在相处后评估关系变化</label
+                >
+                <div class="form-grid">
+                  <div>
+                    <label for="relationship-familiarity-step"
+                      >单次熟悉程度上限</label
+                    ><input
+                      id="relationship-familiarity-step"
+                      type="number"
+                      min="0"
+                      max="10"
+                      step="any"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label for="relationship-familiarity-daily"
+                      >24 小时熟悉程度上限</label
+                    ><input
+                      id="relationship-familiarity-daily"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="any"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label for="relationship-affinity-step"
+                      >单次亲近变化上限</label
+                    ><input
+                      id="relationship-affinity-step"
+                      type="number"
+                      min="0"
+                      max="20"
+                      step="any"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label for="relationship-affinity-daily"
+                      >24 小时亲近变化上限</label
+                    ><input
+                      id="relationship-affinity-daily"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="any"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label for="relationship-trust-step">单次信任变化上限</label
+                    ><input
+                      id="relationship-trust-step"
+                      type="number"
+                      min="0"
+                      max="20"
+                      step="any"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label for="relationship-trust-daily"
+                      >24 小时信任变化上限</label
+                    ><input
+                      id="relationship-trust-daily"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="any"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label for="relationship-bonus"
+                      >熟悉关系的留言优先加分（0～15）</label
+                    ><input
+                      id="relationship-bonus"
+                      type="number"
+                      min="0"
+                      max="15"
+                      step="any"
+                      required
+                    />
+                  </div>
+                </div>
+                <p class="muted small-copy">
+                  正向、负向变化共同计入每日幅度。留言等待越久，优先级也会提高；设为
+                  0 可关闭关系带来的排序加分。
+                </p>
+                <div class="button-row">
+                  <button class="primary" type="submit">保存变化规则</button>
+                </div>
+              </form>
             </article>
           </section>
           <section id="memory" class="view" hidden>

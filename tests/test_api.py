@@ -31,6 +31,8 @@ def test_all_management_routes_require_auth(client):
         "scheduler",
         "statistics",
         "plans",
+        "people",
+        "config/relationships",
     ):
         assert client.get(f"/api/{path}").status_code == 401
     assert client.get("/healthz").json()["status"] == "ok"
@@ -75,6 +77,37 @@ def test_plan_crud_rejects_stale_revision_and_audience_changes(client, clock):
     client.headers.pop("Authorization")
     assert client.post("/api/plans", json=body).status_code == 401
     assert client.put(f"/api/plans/{item['id']}", json=edit).status_code == 401
+
+
+def test_relationship_management_versions_scopes_and_auth(client):
+    endpoint = "/api/people/qq%2Falice"
+    payload = {
+        "expected_version": 0,
+        "label": "管理备注",
+        "familiarity": 10,
+        "affinity": 5,
+        "trust": 2,
+        "reason": "私聊相处的依据",
+        "scope": ["private:alice"],
+    }
+    created = client.put(endpoint, json=payload)
+    assert created.status_code == 200
+    item = created.json()
+    assert item["subject_id"] == "qq/alice" and item["version"] == 1
+    assert client.get("/api/people", params={"query": "管理备注"}).json()[0] == {
+        key: item[key]
+        for key in ("subject_id", "label", "version", "created_at", "updated_at", "scores")
+    }
+    private = client.get(endpoint, params={"audience": "private:alice"}).json()
+    assert private["scores"]["affinity"] == 5
+    assert private["changes"][0]["reason"] == payload["reason"]
+    group = client.get(endpoint, params={"audience": "group:friends"}).json()
+    assert group["scores"]["affinity"] == 0 and group["changes"] == []
+    assert client.put(endpoint, json=payload).status_code == 409
+    assert client.put(endpoint, json=payload | {"affinity": 101}).status_code == 422
+    client.headers.pop("Authorization")
+    assert client.get(endpoint).status_code == 401
+    assert client.put(endpoint, json=payload).status_code == 401
 
 
 def test_sleep_receive_wake_and_selective_review(client, clock):

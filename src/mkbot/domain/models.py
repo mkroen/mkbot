@@ -48,6 +48,13 @@ class InboundEvent(StrictModel):
 
     _utc = field_validator("occurred_at")(utc)
 
+    @field_validator("source")
+    @classmethod
+    def namespace(cls, value):
+        if "/" in value:
+            raise ValueError("平台命名空间不能包含 /，避免不同人物 ID 混同")
+        return value
+
 
 class SleepRequest(StrictModel):
     earliest_wake_at: datetime

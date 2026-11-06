@@ -923,6 +923,125 @@ details summary {
 .check-label input {
   width: auto;
 }
+.people-layout {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.8fr) minmax(0, 1.7fr);
+  gap: 20px;
+  align-items: start;
+}
+.people-layout > .panel {
+  min-width: 0;
+}
+.person-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 12px;
+  margin-bottom: 8px;
+  text-align: left;
+  background: transparent;
+  border-color: transparent;
+}
+.person-entry > span:last-child {
+  min-width: 0;
+}
+.person-entry strong,
+.person-entry small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.person-entry strong {
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.person-entry small {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.person-entry.selected {
+  background: var(--accent-soft);
+  border-color: var(--line);
+}
+.person-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--accent);
+}
+.people-pagination {
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+}
+.people-pagination button {
+  padding: 7px 8px;
+}
+.person-preview-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+}
+.person-preview-form > div {
+  flex: 1 1 170px;
+  min-width: 0;
+}
+.relationship-scores {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 20px 0;
+}
+.relationship-score {
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 14px;
+}
+.relationship-score span,
+.relationship-score small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+.relationship-score strong {
+  display: block;
+  font-weight: 550;
+  font-size: 26px;
+  margin: 8px 0;
+}
+.relationship-score meter {
+  display: block;
+  width: 100%;
+  height: 6px;
+  margin-bottom: 8px;
+  accent-color: var(--accent);
+}
+.relationship-change {
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
+}
+.relationship-change .row-top {
+  font-size: 12px;
+}
+.relationship-change p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.8;
+}
+#person-reason {
+  font-family: inherit;
+  font-size: 13px;
+}
+#person-editor {
+  scroll-margin-top: 82px;
+}
 .danger-text {
   color: var(--danger);
 }
@@ -1075,6 +1194,14 @@ input[role="switch"]:checked:before {
   }
 }
 @media (max-width: 960px) {
+  .people-layout {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  #people-list {
+    max-height: 280px;
+    overflow-y: auto;
+  }
   .metrics {
     grid-template-columns: 1fr 1fr;
   }
@@ -1102,6 +1229,12 @@ input[role="switch"]:checked:before {
   }
 }
 @media (max-width: 700px) {
+  .relationship-score {
+    padding: 10px;
+  }
+  .relationship-score strong {
+    font-size: 23px;
+  }
   .workspace {
     --sidebar-width: 0px;
   }

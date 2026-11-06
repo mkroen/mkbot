@@ -9,10 +9,18 @@ from test_model_gateway import ScriptedProvider, answer
 from test_scheduler import choice, enable, receive, setting
 
 from mkbot.domain.errors import AdmissionDenied, Conflict, ContextInvalidated
-from mkbot.domain.models import ActivityRequest, SleepRequest
+from mkbot.domain.models import SleepRequest
 from mkbot.models.contracts import ModelReply, ToolCall, Usage
 from mkbot.runtime.kernel import Kernel
 from mkbot.runtime.planning import ManualPlan, PlanEdit, PlanOutcome, PlanProposal
+from mkbot.storage.database import (
+    AGENT_SCHEMA,
+    EXECUTION_SCHEMA,
+    MEMORY_SCHEMA,
+    SCHEDULER_SCHEMA,
+    SCHEMA,
+    SCHEMA_VERSION,
+)
 
 
 def progress(clock, decision="continue", **kwargs):
@@ -252,15 +260,25 @@ async def test_held_execution_cannot_be_bypassed_by_editing_goal(kernel, clock):
 
 def test_v5_migration_preserves_existing_activity(tmp_path, clock):
     directory = tmp_path / "migration"
-    old = Kernel(directory, clock)
-    existing = old.activities.create(ActivityRequest(kind="plan", goal="迁移前已有的计划"))
-    old.close()
+    directory.mkdir()
     with sqlite3.connect(directory / "mkbot.sqlite3") as tx:
-        tx.executescript("DROP TABLE plan_runs; DROP TABLE activity_plans; PRAGMA user_version=5;")
+        tx.executescript(
+            SCHEMA
+            + EXECUTION_SCHEMA
+            + AGENT_SCHEMA
+            + MEMORY_SCHEMA
+            + SCHEDULER_SCHEMA
+            + "PRAGMA user_version=5;"
+        )
+        tx.execute(
+            "INSERT INTO activities(id,root_id,kind,goal,origin,priority,created_at,updated_at) "
+            "VALUES('old','old','plan',?,'operator',0,?,?)",
+            ("迁移前已有的计划", clock.now().isoformat(), clock.now().isoformat()),
+        )
     new = Kernel(directory, clock)
     try:
-        assert new.activities.get(existing["id"])["goal"] == "迁移前已有的计划"
-        assert new.db.rows("PRAGMA user_version")[0]["user_version"] == 6
+        assert new.activities.get("old")["goal"] == "迁移前已有的计划"
+        assert new.db.rows("PRAGMA user_version")[0]["user_version"] == SCHEMA_VERSION
         assert new.plans.list() == []
     finally:
         new.close()
