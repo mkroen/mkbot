@@ -16,6 +16,7 @@ from mkbot.storage.database import encode
 class InboxService:
     def __init__(self, lifecycle: Lifecycle) -> None:
         self.lifecycle, self.db, self.clock = lifecycle, lifecycle.db, lifecycle.clock
+        self.on_change = None
 
     def receive(self, event: InboundEvent) -> dict:
         now = timestamp(self.clock.now())
@@ -48,13 +49,16 @@ class InboxService:
             status = "ignored" if event.sender_id == self_id else "pending"
             tx.execute("INSERT INTO inbox(event_id,status) VALUES(?,?)", (event_id, status))
             audit(tx, "inbox.received", event_id, {"status": status}, now)
+        if self.on_change:
+            self.on_change()
         return {"id": event_id, "duplicate": False, "status": status}
 
     def list(self, *, limit: int = 100) -> list[dict]:
         limit = max(1, min(limit, 500))
         rows = self.db.rows(
             "SELECT e.*,i.status,i.decision,i.reason,i.reviewed_at,i.revisit_at "
-            "FROM inbox i JOIN events e ON e.id=i.event_id ORDER BY e.received_at DESC LIMIT ?",
+            "FROM inbox i JOIN events e ON e.id=i.event_id ORDER BY e.received_at DESC "
+            "LIMIT ?",
             (limit,),
         )
         return [row | {"payload": json.loads(row["payload"])} for row in rows]
@@ -79,32 +83,38 @@ class InboxService:
         now = timestamp(self.clock.now())
         if decision.revisit_at and timestamp(decision.revisit_at) <= now:
             raise ValueError("再评估时间必须在未来")
-        ids = list(dict.fromkeys(decision.event_ids))
-        placeholders = ",".join("?" for _ in ids)
         with self.db.transaction() as tx:
             self.lifecycle.check_admission(tx)
-            rows = tx.execute(
-                f"SELECT i.*,e.conversation_id FROM inbox i JOIN events e ON e.id=i.event_id "
-                f"WHERE event_id IN ({placeholders})",
-                ids,
-            ).fetchall()
-            if len(rows) != len(ids) or len({r["conversation_id"] for r in rows}) != 1:
-                raise Conflict("审阅对象不存在或跨越了不同会话")
-            if any(r["status"] not in ("pending", "deferred") for r in rows):
-                raise Conflict("部分留言已完成审阅")
-            tx.executemany(
-                "UPDATE inbox SET status=?,decision=?,reason=?,reviewed_at=?,revisit_at=? "
-                "WHERE event_id=?",
-                [
-                    (
-                        "deferred" if decision.decision == "defer" else "reviewed",
-                        decision.decision,
-                        decision.reason,
-                        now,
-                        timestamp(decision.revisit_at) if decision.revisit_at else None,
-                        event_id,
-                    )
-                    for event_id in ids
-                ],
-            )
-            audit(tx, "inbox.reviewed", ids[0], decision.model_dump(mode="json"), now)
+            self.resolve_in(tx, decision)
+
+    def resolve_in(self, tx, decision: ReviewDecision) -> None:
+        """保存已产生的决策，调用方负责活动归属和准入。"""
+        now = timestamp(self.clock.now())
+        ids = list(dict.fromkeys(decision.event_ids))
+        placeholders = ",".join("?" for _ in ids)
+        rows = tx.execute(
+            f"SELECT i.*,e.conversation_id FROM inbox i JOIN events e ON e.id=i.event_id "
+            f"WHERE event_id IN ({placeholders})",
+            ids,
+        ).fetchall()
+        if len(rows) != len(ids) or len({r["conversation_id"] for r in rows}) != 1:
+            raise Conflict("审阅对象不存在或跨越了不同会话")
+        if any(r["status"] not in ("pending", "deferred") for r in rows):
+            raise Conflict("部分留言已完成审阅")
+        tx.executemany(
+            "UPDATE inbox SET "
+            "status=?,decision=?,reason=?,reviewed_at=?,revisit_at=?,review_count=review_count+1 "
+            "WHERE event_id=?",
+            [
+                (
+                    "deferred" if decision.decision == "defer" else "reviewed",
+                    decision.decision,
+                    decision.reason,
+                    now,
+                    timestamp(decision.revisit_at) if decision.revisit_at else None,
+                    event_id,
+                )
+                for event_id in ids
+            ],
+        )
+        audit(tx, "inbox.reviewed", ids[0], decision.model_dump(mode="json"), now)

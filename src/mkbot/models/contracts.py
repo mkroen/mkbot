@@ -112,6 +112,8 @@ class GatewaySettings(StrictModel):
     timeout_seconds: float = Field(default=180, gt=0, le=600)
     max_concurrency: int = Field(default=1, ge=1, le=16)
     daily_limit_micro_usd: int = Field(default=1_000_000, ge=0)
+    autonomous_daily_limit_micro_usd: int = Field(default=200_000, ge=0)
+    autonomous_daily_call_limit: int = Field(default=100, ge=0, le=10000)
     root_limit_micro_usd: int = Field(default=100_000, ge=0)
     root_call_limit: int = Field(default=12, ge=1, le=100)
     circuit_threshold: int = Field(default=3, ge=1, le=20)

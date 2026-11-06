@@ -18,44 +18,49 @@ class ActivityService:
         self.lifecycle, self.db, self.clock = lifecycle, lifecycle.db, lifecycle.clock
 
     def create(self, request: ActivityRequest) -> dict:
-        activity_id, now = str(uuid4()), timestamp(self.clock.now())
         with self.db.transaction() as tx:
-            root_id = activity_id
-            triggers = sorted(set(request.trigger_event_ids))
-            for event_id in triggers:
-                event = tx.execute(
-                    "SELECT conversation_id FROM events WHERE id=?", (event_id,)
-                ).fetchone()
-                if not event or event[0] != request.conversation_id:
-                    raise Conflict("触发事件必须属于活动所在会话")
-            if request.parent_id:
-                parent = tx.execute(
-                    "SELECT root_id FROM activities WHERE id=?", (request.parent_id,)
-                ).fetchone()
-                if not parent:
-                    raise NotFound("父活动不存在")
-                root_id = parent["root_id"]
-            tx.execute(
-                "INSERT INTO activities(id,root_id,parent_id,kind,goal,origin,conversation_id,"
-                "priority,due_at,created_at,updated_at,trigger_event_ids) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    activity_id,
-                    root_id,
-                    request.parent_id,
-                    request.kind,
-                    request.goal,
-                    request.origin,
-                    request.conversation_id,
-                    request.priority,
-                    timestamp(request.due_at) if request.due_at else None,
-                    now,
-                    now,
-                    encode(triggers),
-                ),
-            )
-            audit(tx, "activity.created", activity_id, {"root_id": root_id}, now)
+            activity_id = self.create_in(tx, request)
         return self.get(activity_id)
+
+    def create_in(self, tx, request: ActivityRequest) -> str:
+        """由调度器在领取事件的同一事务中建立活动。"""
+        activity_id, now = str(uuid4()), timestamp(self.clock.now())
+        root_id = activity_id
+        triggers = sorted(set(request.trigger_event_ids))
+        for event_id in triggers:
+            event = tx.execute(
+                "SELECT conversation_id FROM events WHERE id=?", (event_id,)
+            ).fetchone()
+            if not event or event[0] != request.conversation_id:
+                raise Conflict("触发事件必须属于活动所在会话")
+        if request.parent_id:
+            parent = tx.execute(
+                "SELECT root_id FROM activities WHERE id=?", (request.parent_id,)
+            ).fetchone()
+            if not parent:
+                raise NotFound("父活动不存在")
+            root_id = parent["root_id"]
+        tx.execute(
+            "INSERT INTO activities(id,root_id,parent_id,kind,goal,origin,conversation_id,"
+            "priority,due_at,created_at,updated_at,trigger_event_ids) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                activity_id,
+                root_id,
+                request.parent_id,
+                request.kind,
+                request.goal,
+                request.origin,
+                request.conversation_id,
+                request.priority,
+                timestamp(request.due_at) if request.due_at else None,
+                now,
+                now,
+                encode(triggers),
+            ),
+        )
+        audit(tx, "activity.created", activity_id, {"root_id": root_id}, now)
+        return activity_id
 
     def get(self, activity_id: str) -> dict:
         rows = self.db.rows("SELECT * FROM activities WHERE id=?", (activity_id,))

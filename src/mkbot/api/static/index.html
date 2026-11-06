@@ -27,406 +27,742 @@
       </form>
     </section>
     <div id="workspace" class="workspace" hidden>
-      <aside class="sidebar">
-        <div class="brand">
-          <div class="brand-mark small">m<span>k</span></div>
-          <strong>mkbot</strong><span class="alpha">alpha</span>
-        </div>
-        <p class="nav-label">角色工作台</p>
+      <aside id="sidebar" class="sidebar">
+        <a class="brand" href="#overview" aria-label="mkbot 运行概览"
+          ><div class="brand-mark small">mk</div>
+          <strong>mkbot</strong><span class="alpha">alpha</span></a
+        >
         <nav aria-label="主导航">
-          <button data-view="overview" class="selected">
-            <span>◈</span>运行概览
+          <p class="nav-label">工作台</p>
+          <button data-view="overview" class="selected" aria-current="page">
+            <span class="nav-icon" data-icon="home"></span
+            ><span class="nav-text">运行概览</span>
           </button>
-          <button data-view="activities"><span>▤</span>活动与计划</button>
-          <button data-view="inbox"><span>▱</span>留言收件箱</button>
-          <button data-view="persona"><span>◇</span>人格配置</button>
-          <button data-view="memory"><span>◌</span>记忆与画像</button>
-          <button data-view="models"><span>◎</span>模型与路由</button>
-          <button data-view="plugins"><span>✧</span>能力插件</button>
-          <button data-view="usage"><span>▥</span>资源额度</button>
-          <button data-view="audit"><span>≋</span>运行记录</button>
+          <button data-view="activities">
+            <span class="nav-icon" data-icon="layers"></span
+            ><span class="nav-text">活动与计划</span>
+          </button>
+          <button data-view="inbox">
+            <span class="nav-icon" data-icon="chat"></span
+            ><span class="nav-text">留言收件箱</span>
+          </button>
+          <p class="nav-label">角色与能力</p>
+          <button data-view="persona">
+            <span class="nav-icon" data-icon="person"></span
+            ><span class="nav-text">人格配置</span>
+          </button>
+          <button data-view="memory">
+            <span class="nav-icon" data-icon="memory"></span
+            ><span class="nav-text">记忆与画像</span>
+          </button>
+          <button data-view="plugins">
+            <span class="nav-icon" data-icon="cube"></span
+            ><span class="nav-text">能力插件</span>
+          </button>
+          <p class="nav-label">运行管理</p>
+          <button data-view="scheduler">
+            <span class="nav-icon" data-icon="clock"></span
+            ><span class="nav-text">调度与作息</span>
+          </button>
+          <button data-view="models">
+            <span class="nav-icon" data-icon="sliders"></span
+            ><span class="nav-text">模型与路由</span>
+          </button>
+          <button data-view="usage">
+            <span class="nav-icon" data-icon="chart"></span
+            ><span class="nav-text">资源额度</span>
+          </button>
+          <button data-view="audit">
+            <span class="nav-icon" data-icon="file"></span
+            ><span class="nav-text">运行记录</span>
+          </button>
         </nav>
         <div class="sidebar-bottom">
-          <span class="status-dot"></span>本地实例<button id="logout">
-            退出
-          </button>
+          <span class="status-dot"></span><span class="nav-text">本地实例</span
+          ><button id="logout" title="退出登录">退出</button>
         </div>
       </aside>
       <main>
-        <header>
-          <div>
-            <p class="eyebrow">MKBOT WORKSPACE</p>
-            <h1 id="page-title">运行概览</h1>
+        <header class="topbar">
+          <div class="topbar-left">
+            <button
+              id="toggle-sidebar"
+              class="icon-button"
+              aria-label="收起导航"
+              aria-controls="sidebar"
+              aria-expanded="true"
+            >
+              <span data-icon="menu"></span></button
+            ><span class="breadcrumb"
+              >控制台 <span>/</span> <b id="breadcrumb-title">运行概览</b></span
+            >
           </div>
           <div class="header-actions">
-            <span id="updated" class="muted"></span
-            ><button id="refresh" class="outline">刷新</button>
+            <span id="instance-state" class="instance-state">正在连接</span
+            ><button
+              id="theme-toggle"
+              class="icon-button"
+              aria-label="切换到深色主题"
+              title="切换主题"
+            >
+              <span data-icon="moon"></span></button
+            ><button
+              id="refresh"
+              class="icon-button"
+              aria-label="刷新当前页面"
+              title="刷新"
+            >
+              <span data-icon="refresh"></span>
+            </button>
           </div>
         </header>
-        <div id="notice" role="status" hidden></div>
-        <section id="overview" class="view">
-          <div class="hero">
+        <div class="page-content">
+          <div class="page-heading">
             <div>
-              <span id="phase-badge" class="badge">读取中</span>
-              <h2 id="phase-title">正在了解她的近况</h2>
-              <p id="phase-description">状态与任务从本地实例加载。</p>
+              <p class="eyebrow">CHARACTER CONSOLE</p>
+              <h1 id="page-title">运行概览</h1>
+              <p id="page-description" class="muted">
+                照看角色的日常，也看清每一次行动。
+              </p>
             </div>
-            <div class="orbit"><span>m</span><i></i></div>
+            <span id="updated" class="muted"></span>
           </div>
-          <div class="metrics">
-            <article>
-              <p>待审阅留言</p>
-              <strong id="pending-count">0</strong
-              ><span>看过之后，自由决定回应</span>
-            </article>
-            <article>
-              <p>进行中的活动</p>
-              <strong id="running-count">0</strong
-              ><span>工作收尾后，才能安心休息</span>
-            </article>
-            <article>
-              <p>执行中 / 待核对</p>
-              <strong id="work-count">0</strong
-              ><span>保留每一次行动的真实结果</span>
-            </article>
-          </div>
-          <div class="grid-two">
-            <article class="panel">
-              <h3>作息与状态</h3>
-              <p id="wake-description" class="muted">目前没有唤醒计划</p>
-              <div class="button-row">
-                <button data-action="wake">唤醒</button
-                ><button data-action="awake">结束醒来整理</button
-                ><button data-action="pause">暂停运行</button
-                ><button data-action="resume">恢复运行</button>
-              </div>
-              <form id="sleep-form" class="compact-form">
-                <label for="wake-time">下次醒来时间</label
-                ><input id="wake-time" type="datetime-local" required /><button
-                  type="submit"
-                  class="primary"
-                >
-                  收尾后入睡
+          <div id="notice" role="status" hidden></div>
+          <section id="overview" class="view">
+            <div class="dashboard-top">
+              <article class="panel status-card">
+                <div class="panel-heading">
+                  <h3>角色状态</h3>
+                  <span id="phase-badge" class="badge">读取中</span>
+                </div>
+                <h2 id="phase-title">正在读取近况</h2>
+                <p id="phase-description" class="muted">状态从本地实例加载。</p>
+                <div class="status-counters">
+                  <div>
+                    <strong id="pending-count">—</strong><span>待审阅留言</span>
+                  </div>
+                  <div>
+                    <strong id="running-count">—</strong><span>进行中活动</span>
+                  </div>
+                  <div>
+                    <strong id="work-count">—</strong><span>执行 / 待核对</span>
+                  </div>
+                </div>
+              </article>
+              <article class="panel">
+                <div class="panel-heading">
+                  <h3>常用入口</h3>
+                  <span class="panel-kicker">QUICK ACCESS</span>
+                </div>
+                <div class="quick-grid">
+                  <button data-go="persona">
+                    <span data-icon="person"></span>人格配置</button
+                  ><button data-go="models">
+                    <span data-icon="sliders"></span>模型路由</button
+                  ><button data-go="memory">
+                    <span data-icon="memory"></span>查看记忆</button
+                  ><button data-go="plugins">
+                    <span data-icon="cube"></span>能力插件</button
+                  ><button data-go="inbox">
+                    <span data-icon="chat"></span>审阅留言</button
+                  ><button data-go="audit">
+                    <span data-icon="file"></span>运行记录
+                  </button>
+                </div>
+              </article>
+              <article class="panel">
+                <div class="panel-heading">
+                  <h3>日常安排</h3>
+                  <span id="scheduler-badge" class="badge">读取中</span>
+                </div>
+                <p id="scheduler-reason" class="schedule-reason">
+                  正在读取调度状态
+                </p>
+                <dl class="compact-details">
+                  <dt>下一次检查</dt>
+                  <dd id="scheduler-next">—</dd>
+                  <dt>今日自主活动</dt>
+                  <dd id="scheduler-count">—</dd>
+                </dl>
+                <button data-go="scheduler" class="text-button">
+                  管理调度与作息 <span>→</span>
                 </button>
+              </article>
+            </div>
+            <div class="section-heading">
+              <h3>模型用量</h3>
+              <div class="segmented" role="group" aria-label="统计时间范围">
+                <button data-hours="24" class="selected" aria-pressed="true">
+                  24 小时</button
+                ><button data-hours="168" aria-pressed="false">7 天</button
+                ><button data-hours="720" aria-pressed="false">30 天</button>
+              </div>
+            </div>
+            <div class="metrics">
+              <article>
+                <span class="metric-icon" data-icon="layers"></span>
+                <p>请求次数</p>
+                <strong id="stat-calls">—</strong
+                ><span id="stat-result">等待账本数据</span>
+              </article>
+              <article>
+                <span class="metric-icon" data-icon="chart"></span>
+                <p>Token 用量</p>
+                <strong id="stat-tokens">—</strong
+                ><span id="stat-token-detail">仅统计已报告用量</span>
+              </article>
+              <article>
+                <span class="metric-icon" data-icon="wallet"></span>
+                <p>已结算费用</p>
+                <strong id="stat-cost">—</strong
+                ><span id="stat-reserved">预留费用单独统计</span>
+              </article>
+              <article>
+                <span class="metric-icon" data-icon="clock"></span>
+                <p>平均请求耗时</p>
+                <strong id="stat-latency">—</strong
+                ><span id="stat-unknown">成功请求的完整耗时</span>
+              </article>
+            </div>
+            <div class="grid-two charts">
+              <article class="panel">
+                <div class="panel-heading">
+                  <h3>请求趋势</h3>
+                  <span class="chart-legend"><i></i>模型请求</span>
+                </div>
+                <div id="request-chart" class="chart"></div>
+              </article>
+              <article class="panel">
+                <div class="panel-heading">
+                  <h3>Token 消耗</h3>
+                  <span class="chart-legend"
+                    ><i></i>输入<i class="secondary"></i>输出</span
+                  >
+                </div>
+                <div id="token-chart" class="chart"></div>
+              </article>
+            </div>
+            <div class="grid-two overview-bottom">
+              <article class="panel">
+                <div class="panel-heading">
+                  <h3>最近的安排</h3>
+                  <button data-go="activities" class="text-button">
+                    全部活动 →
+                  </button>
+                </div>
+                <div id="recent-jobs"></div>
+              </article>
+              <article class="panel">
+                <div class="panel-heading">
+                  <h3>待核对工作</h3>
+                  <span class="panel-kicker">WORK LEDGER</span>
+                </div>
+                <div id="work-list" class="muted">正在读取工作账本</div>
+              </article>
+            </div>
+          </section>
+          <section id="scheduler" class="view" hidden>
+            <div class="grid-two">
+              <article class="panel">
+                <div class="panel-heading">
+                  <h3>自动调度</h3>
+                  <span id="scheduler-revision" class="badge"></span>
+                </div>
+                <p class="muted">
+                  接取留言与到期计划，在空闲时安排自己的活动。关闭后会在安全边界暂停当前自动活动。
+                </p>
+                <form id="scheduler-form">
+                  <div class="setting-toggles">
+                    <label
+                      ><span
+                        ><strong>启用自动调度</strong
+                        ><small>首次使用需要先配置模型路由</small></span
+                      ><input
+                        id="scheduler-enabled"
+                        type="checkbox"
+                        role="switch" /></label
+                    ><label
+                      ><span
+                        ><strong>处理会话留言</strong
+                        ><small>连续留言合批后，由角色选择是否回应</small></span
+                      ><input
+                        id="scheduler-chat"
+                        type="checkbox"
+                        role="switch" /></label
+                    ><label
+                      ><span
+                        ><strong>自主空闲活动</strong
+                        ><small>清醒且没有待办时，按兴趣自由安排</small></span
+                      ><input
+                        id="scheduler-idle"
+                        type="checkbox"
+                        role="switch" /></label
+                    ><label
+                      ><span
+                        ><strong>执行到期计划</strong
+                        ><small>未来计划不会阻止当前入睡</small></span
+                      ><input
+                        id="scheduler-plans"
+                        type="checkbox"
+                        role="switch"
+                    /></label>
+                  </div>
+                  <div class="form-grid">
+                    <div>
+                      <label for="scheduler-debounce"
+                        >连续消息合并等待（秒）</label
+                      ><input
+                        id="scheduler-debounce"
+                        type="number"
+                        min="0"
+                        max="30"
+                        step="0.5"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label for="scheduler-cooldown"
+                        >同一会话处理间隔（秒）</label
+                      ><input
+                        id="scheduler-cooldown"
+                        type="number"
+                        min="0"
+                        max="600"
+                        step="1"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label for="scheduler-idle-interval"
+                        >空闲活动间隔（分钟）</label
+                      ><input
+                        id="scheduler-idle-interval"
+                        type="number"
+                        min="1"
+                        max="1440"
+                        step="1"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label for="scheduler-idle-limit">每日自主活动上限</label
+                      ><input
+                        id="scheduler-idle-limit"
+                        type="number"
+                        min="0"
+                        max="1000"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <label for="scheduler-goal">空闲时的行动引导</label
+                  ><textarea
+                    id="scheduler-goal"
+                    rows="4"
+                    maxlength="4000"
+                    required
+                  ></textarea>
+                  <div class="button-row">
+                    <button type="submit" class="primary">保存调度配置</button
+                    ><button id="reload-scheduler" type="button">
+                      重新读取
+                    </button>
+                  </div>
+                  <details>
+                    <summary>高级调度配置</summary>
+                    <p class="muted small-copy">
+                      完整参数包括批次大小、最大等待、暂缓上限与前后台轮换。保存高级配置会同时更新上方表单。
+                    </p>
+                    <label for="scheduler-json">完整调度配置</label
+                    ><textarea
+                      id="scheduler-json"
+                      rows="18"
+                      spellcheck="false"
+                    ></textarea>
+                    <div class="button-row">
+                      <button id="save-scheduler-json" type="button">
+                        保存完整配置
+                      </button>
+                    </div>
+                  </details>
+                </form>
+              </article>
+              <div>
+                <article class="panel">
+                  <h3>作息与运行状态</h3>
+                  <p id="wake-description" class="muted">目前没有唤醒计划</p>
+                  <div class="button-row">
+                    <button data-action="wake">唤醒</button
+                    ><button data-action="awake">结束醒来整理</button
+                    ><button data-action="pause">暂停运行</button
+                    ><button data-action="resume">恢复运行</button>
+                  </div>
+                  <form id="sleep-form" class="compact-form">
+                    <label for="wake-time">下次醒来时间</label
+                    ><input
+                      id="wake-time"
+                      type="datetime-local"
+                      required
+                    /><button type="submit" class="primary">收尾后入睡</button>
+                  </form>
+                  <p class="muted small-copy">
+                    入睡前等待正在执行的工作结束。睡眠期间只保存来信，醒来后再选择要回应的内容。
+                  </p>
+                </article>
+                <article class="panel">
+                  <h3>调度队列</h3>
+                  <div id="scheduler-job-list"></div>
+                </article>
+              </div>
+            </div>
+          </section>
+          <section id="activities" class="view" hidden>
+            <article class="panel">
+              <h3>添加一个计划</h3>
+              <form id="activity-form" class="inline-form">
+                <input
+                  id="goal"
+                  required
+                  placeholder="例如：继续完善昨天的漫画"
+                /><button class="primary" type="submit">保存计划</button>
+              </form>
+            </article>
+            <div id="activity-list"></div>
+          </section>
+          <section id="inbox" class="view" hidden>
+            <article class="panel">
+              <h3>本地收件测试</h3>
+              <p class="muted">
+                消息会进入本地收件箱，便于观察睡眠与审阅状态。
+              </p>
+              <form id="message-form" class="inline-form">
+                <input
+                  id="conversation"
+                  value="local:private:friend"
+                  aria-label="测试会话"
+                /><input
+                  id="message"
+                  required
+                  placeholder="留下一条消息"
+                /><button class="primary" type="submit">保存留言</button>
+              </form>
+            </article>
+            <div id="inbox-list"></div>
+          </section>
+          <section id="persona" class="view" hidden>
+            <article class="panel">
+              <div class="panel-heading">
+                <h3>人格与表达</h3>
+                <span id="config-revision" class="badge"></span>
+              </div>
+              <p class="muted">
+                设定角色如何理解自己、如何表达，以及持续感兴趣的事情。保存时保留完整配置中的其他字段。
+              </p>
+              <form id="persona-fields-form">
+                <div class="form-grid">
+                  <div>
+                    <label for="persona-name">角色名字</label
+                    ><input id="persona-name" required maxlength="80" />
+                  </div>
+                  <div>
+                    <label for="persona-interests">兴趣（逗号分隔）</label
+                    ><input
+                      id="persona-interests"
+                      placeholder="例如 漫画、音乐、日常观察"
+                    />
+                  </div>
+                </div>
+                <label for="persona-identity">自我设定</label
+                ><textarea id="persona-identity" rows="6" required></textarea
+                ><label for="persona-style">表达风格与相处方式</label
+                ><textarea id="persona-style" rows="4"></textarea>
+                <div class="button-row">
+                  <button class="primary" type="submit">保存人格配置</button
+                  ><button id="reload-persona" type="button">重新读取</button>
+                </div>
+              </form>
+              <details>
+                <summary>完整配置 / 自由编辑</summary>
+                <p class="muted small-copy">
+                  可以添加额外设定。保存完整配置后会同步到上方表单，每次保存建立新版本。
+                </p>
+                <form id="persona-form">
+                  <label for="persona-json">配置内容</label
+                  ><textarea
+                    id="persona-json"
+                    spellcheck="false"
+                    rows="16"
+                  ></textarea>
+                  <div class="button-row">
+                    <button class="primary" type="submit">保存完整配置</button>
+                  </div>
+                </form>
+              </details>
+            </article>
+          </section>
+          <section id="memory" class="view" hidden>
+            <article class="panel">
+              <div class="panel-heading">
+                <div><h3>记住相处，也记住自己</h3></div>
+                <button id="memory-new" class="primary">录入记忆</button>
+              </div>
+              <p class="muted">
+                人物偏好、共同经历与角色自身的兴趣，都保留来源与适用范围。查看不会强化记忆；实际使用只会有限提高活跃度。
+              </p>
+              <form id="memory-filter" class="memory-filters">
+                <div>
+                  <label for="memory-tier">记忆层级</label
+                  ><select id="memory-tier">
+                    <option value="">全部层级</option>
+                    <option value="recent">近期记忆</option>
+                    <option value="long">长期记忆</option>
+                    <option value="archived">已归档</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="memory-status">状态</label
+                  ><select id="memory-status">
+                    <option value="active">有效记录</option>
+                    <option value="superseded">已更正</option>
+                    <option value="forgotten">已遗忘</option>
+                    <option value="">全部状态</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="memory-subject">人物或角色</label
+                  ><input
+                    id="memory-subject"
+                    placeholder="例如 qq/alice 或 self"
+                  />
+                </div>
+                <button type="submit">筛选</button>
+              </form>
+            </article>
+            <article id="memory-editor" class="panel" hidden>
+              <div class="panel-heading">
+                <h3 id="memory-editor-title">录入记忆</h3>
+                <button id="memory-editor-close" type="button">收起</button>
+              </div>
+              <form id="memory-edit-form">
+                <div class="form-grid">
+                  <div>
+                    <label for="memory-kind">类型</label
+                    ><select id="memory-kind">
+                      <option value="preference">偏好</option>
+                      <option value="fact">事实陈述</option>
+                      <option value="boundary">相处边界</option>
+                      <option value="current_state">临时近况</option>
+                      <option value="experience">经历</option>
+                      <option value="opinion">观点</option>
+                      <option value="inference">推断</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="memory-subjects">涉及人物（逗号分隔）</label
+                    ><input
+                      id="memory-subjects"
+                      required
+                      placeholder="self / qq/alice"
+                    />
+                  </div>
+                  <div>
+                    <label for="memory-edit-tier">保存到</label
+                    ><select id="memory-edit-tier">
+                      <option value="recent">近期记忆</option>
+                      <option value="long">长期记忆</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="memory-importance">重要程度（0—1）</label
+                    ><input
+                      id="memory-importance"
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      value="0.5"
+                      required
+                    />
+                  </div>
+                </div>
+                <label for="memory-content">记忆内容</label
+                ><textarea
+                  id="memory-content"
+                  rows="3"
+                  maxlength="8000"
+                  required
+                ></textarea>
+                <div class="form-grid">
+                  <div>
+                    <label id="memory-use-label" for="memory-use"
+                      >可用与表达范围</label
+                    ><input
+                      id="memory-use"
+                      required
+                      placeholder="会话 ID、@self 或 *；逗号分隔"
+                    />
+                  </div>
+                  <div id="memory-disclosure-field" hidden>
+                    <label for="memory-disclosure">可以表达给谁</label
+                    ><input
+                      id="memory-disclosure"
+                      placeholder="会话 ID、@self 或 *"
+                    />
+                  </div>
+                  <div>
+                    <label for="memory-expiry">有效期（临时近况必填）</label
+                    ><input id="memory-expiry" type="datetime-local" />
+                  </div>
+                </div>
+                <p class="muted small-copy">
+                  具体会话 ID 表示仅该会话，@self 表示角色内部，*
+                  表示所有会话。手动录入会标记为人工来源。
+                </p>
+                <label id="memory-sharing-label" class="check-label" hidden
+                  ><input
+                    id="memory-sharing"
+                    type="checkbox"
+                  />我明确允许扩大此条记忆的共享范围</label
+                >
+                <div class="button-row">
+                  <button class="primary" type="submit">保存记忆</button
+                  ><span id="memory-editor-version" class="muted"></span>
+                </div>
+              </form>
+            </article>
+            <div id="memory-list"></div>
+            <div class="button-row">
+              <button id="memory-prev">上一页</button
+              ><span id="memory-page" class="muted"></span
+              ><button id="memory-next">下一页</button>
+            </div>
+            <article id="memory-history" class="panel" hidden>
+              <div class="panel-heading">
+                <h3>记忆修订记录</h3>
+                <button id="memory-history-close">收起</button>
+              </div>
+              <div id="memory-history-content"></div>
+            </article>
+            <article class="panel">
+              <h3>查看角色会想起什么</h3>
+              <p class="muted">
+                输入受众范围，可预览当前会话能召回的记忆，或查看某个人的长期画像。这不会发消息，也不会强化记忆。
+              </p>
+              <form id="memory-preview-form" class="form-grid">
+                <div>
+                  <label for="memory-audience">受众会话</label
+                  ><input id="memory-audience" value="@self" required />
+                </div>
+                <div>
+                  <label for="memory-preview-subject"
+                    >人物（画像模式必填）</label
+                  ><input
+                    id="memory-preview-subject"
+                    placeholder="self 或 qq/alice"
+                  />
+                </div>
+                <div>
+                  <label for="memory-query">当前话题</label
+                  ><input id="memory-query" placeholder="例如 安静的地方" />
+                </div>
+                <div>
+                  <label for="memory-preview-mode">查看内容</label
+                  ><select id="memory-preview-mode">
+                    <option value="recall">相关记忆</option>
+                    <option value="profile">长期画像</option>
+                  </select>
+                </div>
+                <div><button class="primary" type="submit">预览</button></div>
+              </form>
+              <div id="memory-preview-result" class="preview-result"></div>
+            </article>
+            <details class="panel">
+              <summary>近期容量与强化规则</summary>
+              <p class="muted small-copy">
+                recent_capacity / recent_per_scope 限制普通 FIFO
+                区；protected_capacity / protected_per_scope
+                限制保护区，两区容量相加。daily_reward_limit 是滚动 24
+                小时上限。缩容在下一次清醒维护或记忆写入时整理。
+              </p>
+              <form id="memory-settings-form">
+                <label for="memory-settings-json">完整记忆配置</label
+                ><textarea
+                  id="memory-settings-json"
+                  rows="15"
+                  spellcheck="false"
+                ></textarea>
+                <div class="button-row">
+                  <button class="primary" type="submit">保存记忆规则</button
+                  ><span id="memory-settings-version" class="muted"></span>
+                </div>
+              </form>
+            </details>
+            <dialog id="memory-forget-dialog">
+              <h3>遗忘这段来源及派生记忆</h3>
+              <p id="memory-forget-impact"></p>
+              <p class="muted">
+                相关旧版本、依赖它的插件缓存和待发送草稿会被清理，活动需要重建上下文。原始聊天日志保留，但不再注入上下文或从这些旧来源提炼记忆。已经发出的消息无法撤回。
+              </p>
+              <div class="button-row">
+                <button id="memory-forget-confirm" class="danger">
+                  确认遗忘</button
+                ><button id="memory-forget-cancel">取消</button>
+              </div>
+            </dialog>
+          </section>
+          <section id="models" class="view" hidden>
+            <article class="panel">
+              <div class="panel-heading">
+                <h3>统一模型配置</h3>
+                <span id="models-revision" class="badge"></span>
+              </div>
+              <p class="muted">
+                设置服务地址、用途、主备用顺序、价格与调用预算。密钥填写环境变量名；保存后下一次新请求使用新配置。
+              </p>
+              <form id="models-form">
+                <label for="models-json">路由配置</label
+                ><textarea
+                  id="models-json"
+                  spellcheck="false"
+                  rows="22"
+                ></textarea>
+                <div class="button-row">
+                  <button class="primary" type="submit">保存模型配置</button
+                  ><button id="reload-models" type="button">
+                    重新读取模型
+                  </button>
+                </div>
               </form>
             </article>
             <article class="panel">
-              <h3>待核对工作</h3>
-              <div id="work-list" class="muted">没有未完成的工作。</div>
+              <h3>最近模型调用</h3>
+              <div id="model-call-list"></div>
             </article>
-          </div>
-        </section>
-        <section id="activities" class="view" hidden>
-          <article class="panel">
-            <h3>添加一个计划</h3>
-            <form id="activity-form" class="inline-form">
-              <input
-                id="goal"
-                required
-                placeholder="例如：继续完善昨天的漫画"
-              /><button class="primary" type="submit">保存计划</button>
-            </form>
-          </article>
-          <div id="activity-list"></div>
-        </section>
-        <section id="inbox" class="view" hidden>
-          <article class="panel">
-            <h3>本地收件测试</h3>
-            <p class="muted">消息会进入本地收件箱，便于观察睡眠与审阅状态。</p>
-            <form id="message-form" class="inline-form">
-              <input
-                id="conversation"
-                value="local:private:friend"
-                aria-label="测试会话"
-              /><input
-                id="message"
-                required
-                placeholder="留下一条消息"
-              /><button class="primary" type="submit">保存留言</button>
-            </form>
-          </article>
-          <div id="inbox-list"></div>
-        </section>
-        <section id="persona" class="view" hidden>
-          <article class="panel">
-            <div class="panel-heading">
-              <h3>人格与表达</h3>
-              <span id="config-revision" class="badge"></span>
-            </div>
-            <p class="muted">
-              编辑完整配置。每次保存建立新版本，避免覆盖其他位置的修改。
-            </p>
-            <form id="persona-form">
-              <label for="persona-json">配置内容</label
-              ><textarea
-                id="persona-json"
-                spellcheck="false"
-                rows="16"
-              ></textarea>
-              <div class="button-row">
-                <button class="primary" type="submit">保存新版本</button
-                ><button id="reload-persona" type="button">重新读取</button>
-              </div>
-            </form>
-          </article>
-        </section>
-        <section id="memory" class="view" hidden>
-          <article class="panel">
-            <div class="panel-heading">
-              <div><h3>记住相处，也记住自己</h3></div>
-              <button id="memory-new" class="primary">录入记忆</button>
-            </div>
-            <p class="muted">
-              人物偏好、共同经历与角色自身的兴趣，都保留来源与适用范围。查看不会强化记忆；实际使用只会有限提高活跃度。
-            </p>
-            <form id="memory-filter" class="memory-filters">
-              <div>
-                <label for="memory-tier">记忆层级</label
-                ><select id="memory-tier">
-                  <option value="">全部层级</option>
-                  <option value="recent">近期记忆</option>
-                  <option value="long">长期记忆</option>
-                  <option value="archived">已归档</option>
-                </select>
-              </div>
-              <div>
-                <label for="memory-status">状态</label
-                ><select id="memory-status">
-                  <option value="active">有效记录</option>
-                  <option value="superseded">已更正</option>
-                  <option value="forgotten">已遗忘</option>
-                  <option value="">全部状态</option>
-                </select>
-              </div>
-              <div>
-                <label for="memory-subject">人物或角色</label
-                ><input
-                  id="memory-subject"
-                  placeholder="例如 qq/alice 或 self"
-                />
-              </div>
-              <button type="submit">筛选</button>
-            </form>
-          </article>
-          <article id="memory-editor" class="panel" hidden>
-            <div class="panel-heading">
-              <h3 id="memory-editor-title">录入记忆</h3>
-              <button id="memory-editor-close" type="button">收起</button>
-            </div>
-            <form id="memory-edit-form">
-              <div class="form-grid">
-                <div>
-                  <label for="memory-kind">类型</label
-                  ><select id="memory-kind">
-                    <option value="preference">偏好</option>
-                    <option value="fact">事实陈述</option>
-                    <option value="boundary">相处边界</option>
-                    <option value="current_state">临时近况</option>
-                    <option value="experience">经历</option>
-                    <option value="opinion">观点</option>
-                    <option value="inference">推断</option>
-                  </select>
-                </div>
-                <div>
-                  <label for="memory-subjects">涉及人物（逗号分隔）</label
-                  ><input
-                    id="memory-subjects"
-                    required
-                    placeholder="self / qq/alice"
-                  />
-                </div>
-                <div>
-                  <label for="memory-edit-tier">保存到</label
-                  ><select id="memory-edit-tier">
-                    <option value="recent">近期记忆</option>
-                    <option value="long">长期记忆</option>
-                  </select>
-                </div>
-                <div>
-                  <label for="memory-importance">重要程度（0—1）</label
-                  ><input
-                    id="memory-importance"
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    value="0.5"
-                    required
-                  />
-                </div>
-              </div>
-              <label for="memory-content">记忆内容</label
-              ><textarea
-                id="memory-content"
-                rows="3"
-                maxlength="8000"
-                required
-              ></textarea>
-              <div class="form-grid">
-                <div>
-                  <label id="memory-use-label" for="memory-use"
-                    >可用与表达范围</label
-                  ><input
-                    id="memory-use"
-                    required
-                    placeholder="会话 ID、@self 或 *；逗号分隔"
-                  />
-                </div>
-                <div id="memory-disclosure-field" hidden>
-                  <label for="memory-disclosure">可以表达给谁</label
-                  ><input
-                    id="memory-disclosure"
-                    placeholder="会话 ID、@self 或 *"
-                  />
-                </div>
-                <div>
-                  <label for="memory-expiry">有效期（临时近况必填）</label
-                  ><input id="memory-expiry" type="datetime-local" />
-                </div>
-              </div>
-              <p class="muted small-copy">
-                具体会话 ID 表示仅该会话，@self 表示角色内部，*
-                表示所有会话。手动录入会标记为人工来源。
+          </section>
+          <section id="plugins" class="view" hidden>
+            <div id="plugin-list"></div>
+          </section>
+          <section id="usage" class="view" hidden>
+            <article class="panel">
+              <h3>资源额度</h3>
+              <p class="muted">
+                已结算用量与仍被占用的预留额度分别显示。micro_usd 每 1,000,000
+                单位为 1 美元；model_attempts 记录尝试次数。
               </p>
-              <label id="memory-sharing-label" class="check-label" hidden
-                ><input
-                  id="memory-sharing"
-                  type="checkbox"
-                />我明确允许扩大此条记忆的共享范围</label
-              >
-              <div class="button-row">
-                <button class="primary" type="submit">保存记忆</button
-                ><span id="memory-editor-version" class="muted"></span>
-              </div>
-            </form>
-          </article>
-          <div id="memory-list"></div>
-          <div class="button-row">
-            <button id="memory-prev">上一页</button
-            ><span id="memory-page" class="muted"></span
-            ><button id="memory-next">下一页</button>
-          </div>
-          <article id="memory-history" class="panel" hidden>
-            <div class="panel-heading">
-              <h3>记忆修订记录</h3>
-              <button id="memory-history-close">收起</button>
-            </div>
-            <div id="memory-history-content"></div>
-          </article>
-          <article class="panel">
-            <h3>查看角色会想起什么</h3>
-            <p class="muted">
-              输入受众范围，可预览当前会话能召回的记忆，或查看某个人的长期画像。这不会发消息，也不会强化记忆。
-            </p>
-            <form id="memory-preview-form" class="form-grid">
-              <div>
-                <label for="memory-audience">受众会话</label
-                ><input id="memory-audience" value="@self" required />
-              </div>
-              <div>
-                <label for="memory-preview-subject">人物（画像模式必填）</label
-                ><input
-                  id="memory-preview-subject"
-                  placeholder="self 或 qq/alice"
-                />
-              </div>
-              <div>
-                <label for="memory-query">当前话题</label
-                ><input id="memory-query" placeholder="例如 安静的地方" />
-              </div>
-              <div>
-                <label for="memory-preview-mode">查看内容</label
-                ><select id="memory-preview-mode">
-                  <option value="recall">相关记忆</option>
-                  <option value="profile">长期画像</option>
-                </select>
-              </div>
-              <div><button class="primary" type="submit">预览</button></div>
-            </form>
-            <div id="memory-preview-result" class="preview-result"></div>
-          </article>
-          <details class="panel">
-            <summary>近期容量与强化规则</summary>
-            <p class="muted small-copy">
-              recent_capacity / recent_per_scope 限制普通 FIFO
-              区；protected_capacity / protected_per_scope
-              限制保护区，两区容量相加。daily_reward_limit 是滚动 24
-              小时上限。缩容在下一次清醒维护或记忆写入时整理。
-            </p>
-            <form id="memory-settings-form">
-              <label for="memory-settings-json">完整记忆配置</label
-              ><textarea
-                id="memory-settings-json"
-                rows="15"
-                spellcheck="false"
-              ></textarea>
-              <div class="button-row">
-                <button class="primary" type="submit">保存记忆规则</button
-                ><span id="memory-settings-version" class="muted"></span>
-              </div>
-            </form>
-          </details>
-          <dialog id="memory-forget-dialog">
-            <h3>遗忘这段来源及派生记忆</h3>
-            <p id="memory-forget-impact"></p>
-            <p class="muted">
-              相关旧版本、依赖它的插件缓存和待发送草稿会被清理，活动需要重建上下文。原始聊天日志保留，但不再注入上下文或从这些旧来源提炼记忆。已经发出的消息无法撤回。
-            </p>
-            <div class="button-row">
-              <button id="memory-forget-confirm" class="danger">确认遗忘</button
-              ><button id="memory-forget-cancel">取消</button>
-            </div>
-          </dialog>
-        </section>
-        <section id="models" class="view" hidden>
-          <article class="panel">
-            <div class="panel-heading">
-              <h3>统一模型配置</h3>
-              <span id="models-revision" class="badge"></span>
-            </div>
-            <p class="muted">
-              设置服务地址、用途、主备用顺序、价格与调用预算。密钥填写环境变量名；保存后下一次新请求使用新配置。
-            </p>
-            <form id="models-form">
-              <label for="models-json">路由配置</label
-              ><textarea
-                id="models-json"
-                spellcheck="false"
-                rows="22"
-              ></textarea>
-              <div class="button-row">
-                <button class="primary" type="submit">保存模型配置</button
-                ><button id="reload-models" type="button">重新读取模型</button>
-              </div>
-            </form>
-          </article>
-          <article class="panel">
-            <h3>最近模型调用</h3>
-            <div id="model-call-list"></div>
-          </article>
-        </section>
-        <section id="plugins" class="view" hidden>
-          <div id="plugin-list"></div>
-        </section>
-        <section id="usage" class="view" hidden>
-          <article class="panel">
-            <h3>资源额度</h3>
-            <p class="muted">
-              已结算用量与仍被占用的预留额度分别显示。micro_usd 每 1,000,000
-              单位为 1 美元；model_attempts 记录尝试次数。
-            </p>
-            <div id="usage-list"></div>
-          </article>
-        </section>
-        <section id="audit" class="view" hidden>
-          <article class="panel">
-            <h3>角色运行时间线</h3>
-            <div id="audit-list"></div>
-          </article>
-        </section>
-        <footer>
-          mkbot <span>持续的经历 · 自主的选择 · 可追溯的行动</span>
-        </footer>
+              <div id="usage-list"></div>
+            </article>
+          </section>
+          <section id="audit" class="view" hidden>
+            <article class="panel">
+              <h3>角色运行时间线</h3>
+              <div id="audit-list"></div>
+            </article>
+          </section>
+          <footer>
+            <span id="app-version">mkbot · alpha</span
+            ><span>持续的经历 · 自主的选择 · 可追溯的行动</span>
+          </footer>
+        </div>
       </main>
     </div>
   </body>

@@ -28,6 +28,8 @@ def test_all_management_routes_require_auth(client):
         "config/persona",
         "memory",
         "config/memory",
+        "scheduler",
+        "statistics",
     ):
         assert client.get(f"/api/{path}").status_code == 401
     assert client.get("/healthz").json()["status"] == "ok"
@@ -82,6 +84,25 @@ def test_configuration_revision_protects_concurrent_edit(client):
     assert client.put("/api/config/persona", json=update).status_code == 409
     assert len(client.get("/api/config/persona/history").json()) == 2
     assert client.get("/api/config/unknown").status_code == 404
+
+
+def test_scheduler_validation_status_and_statistics_ranges(client):
+    config = client.get("/api/config/scheduler").json()
+    assert not config["content"]["enabled"]
+    payload = {
+        "expected_revision": config["revision"],
+        "content": config["content"] | {"max_batch_events": 0},
+    }
+    assert client.put("/api/config/scheduler", json=payload).status_code == 422
+    payload["content"]["max_batch_events"] = 20
+    assert client.put("/api/config/scheduler", json=payload).status_code == 200
+    assert client.put("/api/config/scheduler", json=payload).status_code == 409
+    assert client.get("/api/scheduler").json()["jobs"] == []
+    assert client.post("/api/scheduler/absent/resume").status_code == 404
+    assert client.get("/api/statistics?hours=24").json()["summary"]["calls"] == 0
+    assert client.get("/api/statistics?hours=168").status_code == 200
+    assert client.get("/api/statistics?hours=720").status_code == 200
+    assert client.get("/api/statistics?hours=72").status_code == 422
 
 
 def test_invalid_timestamp_and_transition_have_clear_errors(client):

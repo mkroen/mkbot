@@ -165,7 +165,8 @@ class MemoryService:
             now = timestamp(self.clock.now())
             if source_id.startswith("event:"):
                 event = tx.execute(
-                    "SELECT e.*,i.status FROM events e JOIN inbox i ON e.id=i.event_id WHERE "
+                    "SELECT e.*,i.status FROM events e JOIN inbox i ON e.id=i.event_id "
+                    "WHERE "
                     "e.id=?",
                     (source_id[6:],),
                 ).fetchone()
@@ -379,13 +380,15 @@ class MemoryService:
                 raise Conflict("不能替代当前范围外的记忆")
             tx.execute(
                 "UPDATE memories SET "
-                "status='superseded',superseded_by=?,revision=revision+1,updated_at=? WHERE id=?",
+                "status='superseded',superseded_by=?,revision=revision+1,updated_at=? "
+                "WHERE id=?",
                 (memory_id, now, old["id"]),
             )
             descendants = self._descendants(tx, [old["id"]])
             for child in descendants - {old["id"]}:
                 tx.execute(
-                    "UPDATE memories SET status='superseded',revision=revision+1,updated_at=? "
+                    "UPDATE memories SET "
+                    "status='superseded',revision=revision+1,updated_at=? "
                     "WHERE id=?",
                     (now, child),
                 )
@@ -453,13 +456,20 @@ class MemoryService:
                 (now, activity_id),
             )
             tx.execute(
-                "UPDATE model_calls SET response=NULL,status=CASE WHEN status='succeeded' THEN "
+                "UPDATE activity_decisions SET payload='{}',status='invalidated' WHERE "
+                "activity_id=?",
+                (activity_id,),
+            )
+            tx.execute(
+                "UPDATE model_calls SET response=NULL,status=CASE WHEN "
+                "status='succeeded' THEN "
                 "'invalidated' ELSE status END WHERE activity_id=?",
                 (activity_id,),
             )
             tx.execute(
                 "UPDATE tool_calls SET result=NULL,status=CASE WHEN status IN "
-                "('succeeded','failed') THEN 'invalidated' ELSE status END WHERE activity_id=?",
+                "('succeeded','failed') THEN 'invalidated' ELSE status END WHERE "
+                "activity_id=?",
                 (activity_id,),
             )
             tx.execute(
@@ -505,7 +515,8 @@ class MemoryService:
             # 旧派生摘要不能在父事实改变后继续冒充当前事实。
             for child in affected - {memory_id}:
                 tx.execute(
-                    "UPDATE memories SET status='superseded',revision=revision+1,updated_at=? "
+                    "UPDATE memories SET "
+                    "status='superseded',revision=revision+1,updated_at=? "
                     "WHERE id=?",
                     (now, child),
                 )
@@ -612,7 +623,8 @@ class MemoryService:
     def _maintain(self, tx) -> None:
         settings, now = self.settings(), timestamp(self.clock.now())
         tx.execute(
-            "UPDATE memories SET bucket='fifo',protected_until=NULL WHERE tier='recent' AND "
+            "UPDATE memories SET bucket='fifo',protected_until=NULL WHERE tier='recent' "
+            "AND "
             "bucket='protected' AND protected_until<=?",
             (now,),
         )
@@ -627,7 +639,8 @@ class MemoryService:
         ):
             while True:
                 rows = tx.execute(
-                    "SELECT id,origin_scope FROM memories WHERE status='active' AND tier='recent' "
+                    "SELECT id,origin_scope FROM memories WHERE status='active' AND "
+                    "tier='recent' "
                     "AND bucket=? ORDER BY created_at,rowid",
                     (bucket,),
                 ).fetchall()
@@ -707,7 +720,8 @@ class MemoryService:
                 size += payload_size
                 if select:
                     tx.execute(
-                        "INSERT OR IGNORE INTO memory_selections(activity_id,memory_id,revision) "
+                        "INSERT OR IGNORE INTO "
+                        "memory_selections(activity_id,memory_id,revision) "
                         "VALUES(?,?,?)",
                         (activity_id, row["id"], row["revision"]),
                     )
@@ -753,7 +767,8 @@ class MemoryService:
         return [
             {"id": row["memory_id"], "revision": row["revision"]}
             for row in self.db.rows(
-                "SELECT memory_id,revision FROM memory_selections WHERE activity_id=? ORDER BY "
+                "SELECT memory_id,revision FROM memory_selections WHERE activity_id=? "
+                "ORDER BY "
                 "memory_id,revision",
                 (activity_id,),
             )
@@ -814,7 +829,8 @@ class MemoryService:
             self._assert_context(tx, activity_id, refs)
             for ref in refs:
                 tx.execute(
-                    "INSERT OR IGNORE INTO memory_selections(activity_id,memory_id,revision) "
+                    "INSERT OR IGNORE INTO "
+                    "memory_selections(activity_id,memory_id,revision) "
                     "VALUES(?,?,?)",
                     (activity_id, ref["id"], ref["revision"]),
                 )
@@ -831,7 +847,8 @@ class MemoryService:
             self._assert_context(tx, activity_id)
             for key in set(memory_ids):
                 changed = tx.execute(
-                    "UPDATE memory_selections SET claimed_purpose=? WHERE activity_id=? AND "
+                    "UPDATE memory_selections SET claimed_purpose=? WHERE activity_id=? "
+                    "AND "
                     "memory_id=?",
                     (purpose, activity_id, key),
                 ).rowcount
@@ -868,7 +885,8 @@ class MemoryService:
                 return 0
             applied = 0
             for selection in tx.execute(
-                "SELECT * FROM memory_selections WHERE activity_id=? AND claimed_purpose IS NOT "
+                "SELECT * FROM memory_selections WHERE activity_id=? AND claimed_purpose "
+                "IS NOT "
                 "NULL",
                 (activity_id,),
             ).fetchall():
@@ -884,7 +902,8 @@ class MemoryService:
                     for trigger in triggers
                     if trigger not in row["source_refs"]
                     and not tx.execute(
-                        "SELECT 1 FROM memory_use_triggers WHERE memory_id=? AND revision=? AND "
+                        "SELECT 1 FROM memory_use_triggers WHERE memory_id=? AND "
+                        "revision=? AND "
                         "trigger_source_id=?",
                         (row["id"], row["revision"], trigger),
                     ).fetchone()
@@ -932,8 +951,10 @@ class MemoryService:
                 if row["valid_until"]:
                     until = min(until, row["valid_until"])
                 tx.execute(
-                    "UPDATE memories SET activation=?,activation_at=?,last_used_at=?,bucket=CASE "
-                    "WHEN tier='recent' THEN 'protected' ELSE bucket END,protected_until=? WHERE "
+                    "UPDATE memories SET "
+                    "activation=?,activation_at=?,last_used_at=?,bucket=CASE "
+                    "WHEN tier='recent' THEN 'protected' ELSE bucket "
+                    "END,protected_until=? WHERE "
                     "id=?",
                     (activation + reward, now, now, until, row["id"]),
                 )

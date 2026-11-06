@@ -239,14 +239,22 @@ class ModelGateway:
     def _start(
         self, activity_id, key, role, fingerprint, route, request, settings, revision, attempt
     ):
-        root = self.db.rows("SELECT root_id FROM activities WHERE id=?", (activity_id,))[0][
-            "root_id"
-        ]
+        activity = self.db.rows("SELECT * FROM activities WHERE id=?", (activity_id,))[0]
+        root = activity["root_id"]
+        parent = self.db.rows("SELECT origin FROM activities WHERE id=?", (root,))[0]
         day = self.clock.now().date().isoformat()
         scopes = [f"day:{day}", f"root:{root}"]
         self.budgets.configure(scopes[0], "micro_usd", settings.daily_limit_micro_usd)
         self.budgets.configure(scopes[1], "micro_usd", settings.root_limit_micro_usd)
         self.budgets.configure(scopes[1], "model_attempts", settings.root_call_limit)
+        if activity["origin"] == "autonomous" or parent["origin"] == "autonomous":
+            scopes.append(f"autonomous-day:{day}")
+            self.budgets.configure(
+                scopes[2], "micro_usd", settings.autonomous_daily_limit_micro_usd
+            )
+            self.budgets.configure(
+                scopes[2], "model_attempts", settings.autonomous_daily_call_limit
+            )
         # UTF-8 字节数加余量是保守预估，不把它冒充供应商 token 用量。
         upper_input = len(request.model_dump_json().encode()) + 1024
         estimate = route.prices.cost(
@@ -254,6 +262,8 @@ class ModelGateway:
         )
         charges = [Charge(scope, "micro_usd", estimate) for scope in scopes]
         charges.append(Charge(scopes[1], "model_attempts", 1))
+        if len(scopes) > 2:
+            charges.append(Charge(scopes[2], "model_attempts", 1))
         attempt_id = str(uuid4())
         work_id = self.lifecycle.start_work("model", activity_id)
         try:
@@ -321,6 +331,8 @@ class ModelGateway:
         if usage is not None:
             actual = [Charge(scope, "micro_usd", route.prices.cost(usage)) for scope in scopes]
             actual.append(Charge(scopes[1], "model_attempts", 1))
+            if len(scopes) > 2:
+                actual.append(Charge(scopes[2], "model_attempts", 1))
         self.budgets.settle(attempt_id, actual)
         now = timestamp(self.clock.now())
         retry_at = None
@@ -329,7 +341,8 @@ class ModelGateway:
             retry_at = timestamp(self.clock.now() + timedelta(seconds=delay))
         with self.db.transaction() as tx:
             tx.execute(
-                "UPDATE model_calls SET status=?,error_kind=?,response=?,usage=?,finished_at=?,"
+                "UPDATE model_calls SET "
+                "status=?,error_kind=?,response=?,usage=?,finished_at=?,"
                 "elapsed_ms=?,retry_at=? WHERE id=?",
                 (
                     status,
@@ -386,7 +399,8 @@ class ModelGateway:
 
     def calls(self, limit: int = 100) -> list[dict]:
         rows = self.db.rows(
-            "SELECT id,activity_id,request_key,role,route_revision,provider,model,attempt,status,"
+            "SELECT "
+            "id,activity_id,request_key,role,route_revision,provider,model,attempt,status,"
             "error_kind,usage,prices,started_at,finished_at,elapsed_ms,retry_at,"
             "json_extract(response,'$.served_model') AS served_model,"
             "(SELECT min(reserved) FROM reservations WHERE id=model_calls.id "

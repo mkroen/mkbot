@@ -28,6 +28,7 @@ class PluginRegistry:
         self.plugins: dict[str, Plugin] = {}
         self.tools: dict[str, tuple[Plugin, Tool]] = {}
         self.memory = None
+        self.context_validator = None
         with self.db.transaction() as tx:
             tx.execute("UPDATE tool_calls SET status='unknown' WHERE status='running'")
 
@@ -69,8 +70,8 @@ class PluginRegistry:
         )
 
     async def execute(self, activity_id: str, key: str, call: ToolCall) -> ToolResult:
-        if self.memory:
-            self.memory.assert_context(activity_id)
+        if self.context_validator:
+            self.context_validator(activity_id)
         if not key or len(key) > 200:
             raise ValueError("工具调用需要稳定且有限长度的键")
         if call.name not in self.tools:
@@ -114,7 +115,8 @@ class PluginRegistry:
         work_id = self.lifecycle.start_work("tool", activity_id)
         with self.db.transaction() as tx:
             tx.execute(
-                "INSERT INTO tool_calls(id,activity_id,invocation_key,fingerprint,tool,work_id,"
+                "INSERT INTO "
+                "tool_calls(id,activity_id,invocation_key,fingerprint,tool,work_id,"
                 "status,started_at,evidence_kind) VALUES(?,?,?,?,?,?,?,?,?)",
                 (
                     call_id,
@@ -138,8 +140,8 @@ class PluginRegistry:
         try:
             async with asyncio.timeout(tool.timeout_seconds):
                 result = ToolResult.model_validate(await tool.handler(context, arguments))
-                if self.memory:
-                    self.memory.assert_context(activity_id)
+                if self.context_validator:
+                    self.context_validator(activity_id)
                 if len(result.model_dump_json().encode()) > 64_000:
                     raise ValueError("工具结果超过大小限制")
         except ContextInvalidated:

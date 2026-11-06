@@ -10,7 +10,7 @@ from typing import Any
 
 from mkbot.domain.errors import UnsupportedSchema
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 SCHEMA = """
 CREATE TABLE characters (
@@ -197,6 +197,33 @@ CREATE INDEX activity_source ON activity_sources(source_id,activity_id);
 """
 
 
+SCHEDULER_SCHEMA = """
+ALTER TABLE inbox ADD COLUMN review_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE run_guards ADD COLUMN paused_at TEXT;
+CREATE TABLE scheduler_state (
+    id TEXT PRIMARY KEY, next_idle_at TEXT NOT NULL, next_dispatch_at TEXT,
+    idle_day TEXT NOT NULL, idle_started INTEGER NOT NULL DEFAULT 0,
+    chat_burst INTEGER NOT NULL DEFAULT 0, wake_cutoff INTEGER,
+    last_reason TEXT NOT NULL DEFAULT '尚未启用调度', updated_at TEXT NOT NULL
+);
+CREATE TABLE scheduler_jobs (
+    activity_id TEXT PRIMARY KEY REFERENCES activities(id), lane TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ready', reason TEXT NOT NULL,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE inbox_leases (
+    event_id TEXT PRIMARY KEY REFERENCES events(id),
+    activity_id TEXT NOT NULL REFERENCES activities(id)
+);
+CREATE TABLE activity_decisions (
+    activity_id TEXT PRIMARY KEY REFERENCES activities(id), kind TEXT NOT NULL,
+    payload TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL
+);
+CREATE INDEX scheduler_queue ON scheduler_jobs(status,lane,created_at);
+CREATE INDEX inbox_lease_activity ON inbox_leases(activity_id);
+"""
+
+
 def encode(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
@@ -237,6 +264,11 @@ class Database:
         if version == 3:
             self.connection.executescript(
                 "BEGIN IMMEDIATE;\n" + MEMORY_SCHEMA + "\nPRAGMA user_version=4;\nCOMMIT;"
+            )
+            version = 4
+        if version == 4:
+            self.connection.executescript(
+                "BEGIN IMMEDIATE;\n" + SCHEDULER_SCHEMA + "\nPRAGMA user_version=5;\nCOMMIT;"
             )
 
     @contextmanager

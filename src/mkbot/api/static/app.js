@@ -4,12 +4,17 @@ let token = sessionStorage.getItem("mkbot-token") || "";
 let revision = 0;
 let modelsRevision = 0;
 let currentView = "overview";
+let schedulerRevision = 0;
+let schedulerContent = {};
+let personaContent = {};
+let statisticsHours = 24;
 let memoryOffset = 0;
 let memoryRevision = 0;
 let editingMemory = null;
 let forgettingMemory = null;
 const titles = {
   overview: "运行概览",
+  scheduler: "调度与作息",
   activities: "活动与计划",
   inbox: "留言收件箱",
   persona: "人格配置",
@@ -20,6 +25,14 @@ const titles = {
   audit: "运行记录",
 };
 const labels = {
+  ready: "待执行",
+  yielded: "已让出前台",
+  held: "需要处理",
+  done: "已结束",
+  chat: "会话留言",
+  idle: "自主活动",
+  plan: "计划",
+  succeeded: "成功",
   awake: "清醒",
   winding_down: "正在收尾",
   sleeping: "睡眠",
@@ -99,11 +112,195 @@ async function action(callback) {
 function empty(text) {
   return `<div class="empty">${escapeHtml(text)}</div>`;
 }
-async function overview() {
-  const state = await api("status");
+const descriptions = {
+  overview: "照看角色的日常，也看清每一次行动。",
+  activities: "继续未完成的事情，为以后留下计划。",
+  inbox: "按会话查看留言与审阅结果，无需逐条回应。",
+  persona: "定义角色是谁、如何表达，以及对什么感兴趣。",
+  memory: "管理相处中的记忆、来源和分享边界。",
+  plugins: "通过能力描述和工具，让角色学会新的技能。",
+  scheduler: "安排清醒时的活动，留出等待和休息的时间。",
+  models: "统一管理主会话与能力调用的模型、价格和备用路由。",
+  usage: "查看已结算用量与预留额度，未知用量会继续占用预留。",
+  audit: "从持久记录中追踪状态变化、模型请求和工具行动。",
+};
+const iconPaths = {
+  home: '<path d="m3 10 9-7 9 7v10H3Z"/><path d="M9 20v-7h6v7"/>',
+  layers: '<path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/>',
+  chat: '<path d="M4 4h16v12H9l-5 4V4Z"/><path d="M8 8h8M8 12h5"/>',
+  person: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>',
+  memory:
+    '<path d="M8 3h8l5 5v8l-5 5H8l-5-5V8Z"/><circle cx="12" cy="12" r="3"/><path d="M12 3v6m0 6v6M3 12h6m6 0h6"/>',
+  cube: '<path d="m12 3 9 5v9l-9 5-9-5V8l9-5Zm-9 5 9 5 9-5m-9 5v9M7 5l10 6"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/>',
+  sliders:
+    '<path d="M3 6h7m4 0h7M3 12h12m4 0h2M3 18h3m4 0h11M10 3v6m5 0v6M6 15v6"/>',
+  chart: '<path d="M4 3v17h17M8 15v-4m5 4V6m5 9V9"/>',
+  file: '<path d="M5 3h9l5 5v13H5Z"/><path d="M14 3v6h5M9 13h6m-6 4h6"/>',
+  moon: '<path d="M20 14A9 9 0 0 1 10 3a9 9 0 1 0 10 11Z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1 1m12 12 1 1M5 19l1-1M18 6l1-1"/>',
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  refresh:
+    '<path d="M20 7v5h-5M4 17v-5h5M5 8a8 8 0 0 1 14-2l1 3M4 15l1 3a8 8 0 0 0 14-2"/>',
+  wallet: '<path d="M3 5h16v15H3V5Zm0 0 13-2v2M15 10h6v6h-6Z"/>',
+};
+const icon = (name) =>
+  `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${iconPaths[name] || iconPaths.file}</svg>`;
+document.querySelectorAll("[data-icon]").forEach((element) => {
+  element.innerHTML = icon(element.dataset.icon);
+});
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem("mkbot-theme", theme);
+  $("theme-toggle").innerHTML = icon(theme === "dark" ? "sun" : "moon");
+  $("theme-toggle").setAttribute(
+    "aria-label",
+    theme === "dark" ? "切换到浅色主题" : "切换到深色主题",
+  );
+}
+function setCollapsed(collapsed) {
+  $("workspace").classList.toggle("sidebar-collapsed", collapsed);
+  $("sidebar").inert =
+    collapsed && window.matchMedia("(max-width: 700px)").matches;
+  $("toggle-sidebar").setAttribute("aria-expanded", String(!collapsed));
+  $("toggle-sidebar").setAttribute(
+    "aria-label",
+    collapsed ? "展开导航" : "收起导航",
+  );
+}
+setTheme(localStorage.getItem("mkbot-theme") === "dark" ? "dark" : "light");
+setCollapsed(window.matchMedia("(max-width: 700px)").matches);
+window.matchMedia("(max-width: 700px)").addEventListener("change", (event) => {
+  setCollapsed(event.matches);
+});
+$("theme-toggle").addEventListener("click", () =>
+  setTheme(
+    document.documentElement.dataset.theme === "dark" ? "light" : "dark",
+  ),
+);
+$("toggle-sidebar").addEventListener("click", () =>
+  setCollapsed(!$("workspace").classList.contains("sidebar-collapsed")),
+);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && window.matchMedia("(max-width: 700px)").matches)
+    setCollapsed(true);
+});
+const shortNumber = (value) =>
+  new Intl.NumberFormat("en", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+const money = (value) =>
+  "$" +
+  (Number(value) / 1_000_000).toLocaleString("en", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  });
+function renderChart(id, points, kind) {
+  const total = points.reduce(
+    (sum, point) =>
+      sum +
+      (kind === "calls"
+        ? point.calls
+        : point.input_tokens + point.output_tokens),
+    0,
+  );
+  const values = points.map((point) =>
+    kind === "calls" ? point.calls : point.input_tokens + point.output_tokens,
+  );
+  const top = Math.max(1, ...values);
+  const w = 530,
+    h = 180,
+    left = 38,
+    right = 12,
+    bottom = 27,
+    yTop = 10;
+  const plotH = h - bottom - yTop,
+    plotW = w - left - right;
+  const x = (index) => left + (index * plotW) / Math.max(1, points.length - 1);
+  const y = (value) => yTop + plotH * (1 - value / top);
+  let svg = `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${kind === "calls" ? "请求" : "Token"}趋势，总计 ${total}">`;
+  for (let i = 0; i < 4; i++) {
+    const value = (top * i) / 3;
+    svg += `<line class="gridline" x1="${left}" x2="${w - right}" y1="${y(value)}" y2="${y(value)}"/><text x="${left - 8}" y="${y(value) + 3}" text-anchor="end">${shortNumber(value)}</text>`;
+  }
+  if (total && kind === "calls") {
+    const path = values
+      .map((value, index) => `${index ? "L" : "M"}${x(index)},${y(value)}`)
+      .join(" ");
+    svg += `<path class="trend-fill" d="${path} L${x(points.length - 1)},${y(0)} L${left},${y(0)} Z"/><path class="trend-line" d="${path}"/>`;
+  } else if (total) {
+    const width = plotW / points.length;
+    points.forEach((point, index) => {
+      const xpos = left + width * index + width * 0.2;
+      const inputH = (plotH * point.input_tokens) / top,
+        outputH = (plotH * point.output_tokens) / top;
+      svg += `<rect class="bar-input" x="${xpos}" y="${y(0) - inputH}" width="${width * 0.6}" height="${inputH}"/><rect class="bar-output" x="${xpos}" y="${y(0) - inputH - outputH}" width="${width * 0.6}" height="${outputH}"/>`;
+    });
+  }
+  for (const index of [
+    ...new Set([
+      0,
+      Math.floor(points.length / 4),
+      Math.floor(points.length / 2),
+      Math.floor(points.length * 0.75),
+      points.length - 1,
+    ]),
+  ]) {
+    const date = new Date(points[index].at);
+    const label =
+      statisticsHours === 24
+        ? date.toLocaleTimeString("zh-CN", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          })
+        : `${date.getMonth() + 1}/${date.getDate()}`;
+    svg += `<text x="${x(index)}" y="${h - 4}" text-anchor="${index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"}">${label}</text>`;
+  }
+  $(id).innerHTML =
+    svg +
+    "</svg>" +
+    (total
+      ? ""
+      : `<div class="chart-empty"><span>${kind === "calls" ? "此时段暂无模型请求" : "此时段暂无已报告的 Token 用量"}</span></div>`);
+}
+async function statistics() {
+  const data = await api(`statistics?hours=${statisticsHours}`);
+  const summary = data.summary;
+  $("stat-calls").textContent = summary.calls.toLocaleString("zh-CN");
+  $("stat-result").textContent =
+    `成功 ${summary.succeeded} · 失败 ${summary.failed} · 执行中 ${summary.running}`;
+  $("stat-tokens").textContent = shortNumber(
+    summary.input_tokens + summary.output_tokens,
+  );
+  $("stat-token-detail").textContent =
+    `输入 ${shortNumber(summary.input_tokens)} / 输出 ${shortNumber(summary.output_tokens)}`;
+  $("stat-cost").textContent = money(summary.settled_micro_usd);
+  $("stat-reserved").textContent =
+    `另有 ${money(summary.reserved_micro_usd)} 预留待结算`;
+  $("stat-latency").textContent =
+    summary.average_ms === null
+      ? "—"
+      : `${(summary.average_ms / 1000).toFixed(2)} s`;
+  $("stat-unknown").textContent = summary.unknown_usage
+    ? `${summary.unknown_usage} 次请求用量未知`
+    : "成功请求的完整耗时";
+  renderChart("request-chart", data.trend, "calls");
+  renderChart("token-chart", data.trend, "tokens");
+  document.querySelectorAll("[data-hours]").forEach((button) => {
+    const selected = Number(button.dataset.hours) === statisticsHours;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
+}
+function lifecycleView(state) {
   $("phase-badge").textContent = state.paused
     ? "运行已暂停"
     : labels[state.phase];
+  $("instance-state").textContent =
+    `本地实例 · ${state.paused ? "已暂停" : labels[state.phase]}`;
+  $("app-version").textContent = `mkbot · ${state.app_version || "alpha"}`;
   document.querySelectorAll("[data-action]").forEach((button) => {
     const allowed = {
       wake: !state.paused && ["sleeping", "winding_down"].includes(state.phase),
@@ -115,28 +312,25 @@ async function overview() {
   });
   const copy = {
     awake: [
-      "清醒着，等待新的故事",
-      "她可以查看留言，继续计划，也可以安静地等一会儿。",
+      "清醒着，看看近况",
+      "可以查看留言、继续计划，也可以安静地等一会儿。",
     ],
     winding_down: [
-      "把手头的事情做完",
-      "正在等待当前工作收尾，随后按保存的计划入睡。",
+      "把手头的事做完",
+      "等待当前工作收尾，随后按保存的计划入睡。",
     ],
-    sleeping: ["正在休息", "留言会妥善保存，醒来之后再决定要回应哪些内容。"],
-    waking: [
-      "慢慢醒来，看看近况",
-      "先看看最近的留言和未完成事项，再安排接下来的活动。",
-    ],
+    sleeping: ["正在休息", "留言会先保存，醒来之后再决定回应哪些内容。"],
+    waking: ["醒来，看看新留言", "按会话审阅积压留言，再安排接下来的活动。"],
   };
   $("phase-title").textContent = state.paused
     ? "运行已暂停"
     : copy[state.phase][0];
   $("phase-description").textContent = state.paused
-    ? "角色状态已经保留，可以在准备好后恢复。"
+    ? "状态已经保留，可以在准备好后恢复。"
     : copy[state.phase][1];
   $("pending-count").textContent = state.inbox_counts
     .filter((x) => ["pending", "deferred"].includes(x.status))
-    .reduce((a, x) => a + x.count, 0);
+    .reduce((sum, x) => sum + x.count, 0);
   $("running-count").textContent =
     state.activity_counts.find((x) => x.status === "running")?.count || 0;
   $("work-count").textContent = state.work.length;
@@ -147,10 +341,82 @@ async function overview() {
     ? state.work
         .map(
           (x) =>
-            `<div class="row-card"><div class="row-top"><strong>${escapeHtml(x.kind)}</strong><span class="badge">${labels[x.status]}</span></div><div class="row-meta">${when(x.started_at)}</div><p>${escapeHtml(x.detail || "正在执行")}</p></div>`,
+            `<div class="job-line"><div><strong>${escapeHtml(x.kind)}</strong><p>${when(x.started_at)} · ${escapeHtml(x.detail || "正在执行")}</p></div><span class="badge">${labels[x.status]}</span></div>`,
         )
         .join("")
-    : empty("所有工作都已妥善收尾");
+    : empty("没有待核对的工作，所有行动都已收尾");
+}
+function jobLines(jobs, controls = false) {
+  return jobs.length
+    ? jobs
+        .map(
+          (job) =>
+            `<div class="job-line"><div><strong title="${escapeHtml(job.goal)}">${escapeHtml(job.goal)}</strong><p>${escapeHtml(labels[job.lane])} · ${escapeHtml(job.reason)}${job.due_at ? ` · ${when(job.due_at)}` : ""}</p>${controls && job.status === "held" ? `<button class="text-button" data-scheduler-resume="${escapeHtml(job.activity_id)}">核对后继续调度 →</button>` : ""}</div><span class="badge">${escapeHtml(labels[job.status] || job.status)}</span></div>`,
+        )
+        .join("")
+    : empty("还没有调度活动");
+}
+function schedulerSummary(state) {
+  $("scheduler-badge").textContent = state.settings.enabled
+    ? "已开启"
+    : "未开启";
+  $("scheduler-reason").textContent = state.settings.enabled
+    ? state.last_reason
+    : "自动调度尚未开启，可先配置模型与角色。";
+  $("scheduler-next").textContent = state.next_at
+    ? when(state.next_at)
+    : "等待事件";
+  $("scheduler-count").textContent =
+    `${state.idle_started_today ?? state.idle_started} / ${state.settings.idle_max_runs_per_day}`;
+  $("recent-jobs").innerHTML = jobLines(state.jobs.slice(0, 3));
+  $("scheduler-job-list").innerHTML = jobLines(state.jobs.slice(0, 20), true);
+}
+async function overview() {
+  const [state, schedule] = await Promise.all([
+    api("status"),
+    api("scheduler"),
+    statistics(),
+  ]);
+  lifecycleView(state);
+  schedulerSummary(schedule);
+}
+function fillScheduler(config) {
+  schedulerRevision = config.revision;
+  schedulerContent = config.content;
+  $("scheduler-revision").textContent = `版本 ${schedulerRevision}`;
+  for (const [id, key] of [
+    ["enabled", "enabled"],
+    ["chat", "chat_enabled"],
+    ["idle", "autonomous_enabled"],
+    ["plans", "run_plans"],
+  ])
+    $("scheduler-" + id).checked = config.content[key];
+  $("scheduler-debounce").value = config.content.debounce_seconds;
+  $("scheduler-cooldown").value = config.content.conversation_cooldown_seconds;
+  $("scheduler-idle-interval").value =
+    config.content.idle_interval_seconds / 60;
+  $("scheduler-idle-limit").value = config.content.idle_max_runs_per_day;
+  $("scheduler-goal").value = config.content.idle_goal;
+  $("scheduler-json").value = JSON.stringify(config.content, null, 2);
+}
+async function scheduler() {
+  const [config, schedule, state] = await Promise.all([
+    api("config/scheduler"),
+    api("scheduler"),
+    api("status"),
+  ]);
+  fillScheduler(config);
+  schedulerSummary(schedule);
+  lifecycleView(state);
+}
+async function saveScheduler(content) {
+  const saved = await api("config/scheduler", "PUT", {
+    expected_revision: schedulerRevision,
+    content,
+  });
+  fillScheduler(saved);
+  schedulerSummary(await api("scheduler"));
+  notice("调度配置已保存，下一次安全调度时生效");
 }
 async function activities() {
   const rows = await api("activities");
@@ -174,11 +440,20 @@ async function inbox() {
         .join("")
     : empty("收件箱很安静");
 }
-async function persona() {
-  const item = await api("config/persona");
+function fillPersona(item) {
   revision = item.revision;
+  personaContent = item.content;
   $("config-revision").textContent = `版本 ${revision}`;
   $("persona-json").value = JSON.stringify(item.content, null, 2);
+  $("persona-name").value = item.content.name || "";
+  $("persona-identity").value = item.content.identity || "";
+  $("persona-style").value = item.content.style || "";
+  $("persona-interests").value = Array.isArray(item.content.interests)
+    ? item.content.interests.join("，")
+    : "";
+}
+async function persona() {
+  fillPersona(await api("config/persona"));
 }
 async function usage() {
   const rows = await api("usage");
@@ -310,6 +585,7 @@ function memoryEditor(item = null) {
 }
 const loaders = {
   overview,
+  scheduler,
   activities,
   inbox,
   persona,
@@ -325,11 +601,11 @@ async function loadView() {
     `更新于 ${new Date().toLocaleTimeString("zh-CN", { hour12: false })}`;
 }
 async function enter() {
-  await api("status");
+  lifecycleView(await api("status"));
   sessionStorage.setItem("mkbot-token", token);
   $("login").hidden = true;
   $("workspace").hidden = false;
-  await loadView();
+  await navigate(location.hash.slice(1));
 }
 $("login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -346,28 +622,115 @@ $("logout").addEventListener("click", () => {
   token = "";
   location.reload();
 });
-document.querySelectorAll("nav button").forEach((button) =>
+async function navigate(view) {
+  currentView = titles[view] ? view : "overview";
+  document.querySelectorAll(".view").forEach((element) => {
+    element.hidden = element.id !== currentView;
+  });
+  document.querySelectorAll("nav button").forEach((button) => {
+    const selected = button.dataset.view === currentView;
+    button.classList.toggle("selected", selected);
+    if (selected) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
+  $("page-title").textContent = $("breadcrumb-title").textContent =
+    titles[currentView];
+  $("page-description").textContent = descriptions[currentView];
+  $("notice").hidden = true;
+  history.replaceState(null, "", "#" + currentView);
+  if (window.matchMedia("(max-width: 700px)").matches) setCollapsed(true);
+  window.scrollTo({ top: 0 });
+  await loadView();
+}
+document.querySelectorAll("nav button").forEach((button) => {
+  button.title = titles[button.dataset.view];
+  button.setAttribute("aria-label", titles[button.dataset.view]);
+  button.addEventListener("click", () =>
+    action(() => navigate(button.dataset.view)),
+  );
+});
+document
+  .querySelectorAll("[data-go]")
+  .forEach((button) =>
+    button.addEventListener("click", () =>
+      action(() => navigate(button.dataset.go)),
+    ),
+  );
+document.querySelectorAll("[data-hours]").forEach((button) =>
   button.addEventListener("click", () =>
     action(async () => {
-      currentView = button.dataset.view;
-      document
-        .querySelectorAll(".view")
-        .forEach((v) => (v.hidden = v.id !== currentView));
-      document
-        .querySelectorAll("nav button")
-        .forEach((b) => b.classList.toggle("selected", b === button));
-      $("page-title").textContent = titles[currentView];
-      $("notice").hidden = true;
-      await loadView();
+      statisticsHours = Number(button.dataset.hours);
+      await statistics();
     }),
   ),
 );
+$("sidebar")
+  .querySelector(".brand")
+  .addEventListener("click", (event) => {
+    event.preventDefault();
+    action(() => navigate("overview"));
+  });
+window.addEventListener("hashchange", () => {
+  if (token) action(() => navigate(location.hash.slice(1)));
+});
+$("scheduler-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  action(() =>
+    saveScheduler({
+      ...schedulerContent,
+      enabled: $("scheduler-enabled").checked,
+      chat_enabled: $("scheduler-chat").checked,
+      autonomous_enabled: $("scheduler-idle").checked,
+      run_plans: $("scheduler-plans").checked,
+      debounce_seconds: Number($("scheduler-debounce").value),
+      conversation_cooldown_seconds: Number($("scheduler-cooldown").value),
+      idle_interval_seconds: Math.round(
+        Number($("scheduler-idle-interval").value) * 60,
+      ),
+      idle_max_runs_per_day: Number($("scheduler-idle-limit").value),
+      idle_goal: $("scheduler-goal").value,
+    }),
+  );
+});
+$("reload-scheduler").addEventListener("click", () => action(scheduler));
+$("save-scheduler-json").addEventListener("click", () =>
+  action(() => saveScheduler(JSON.parse($("scheduler-json").value))),
+);
+$("scheduler-job-list").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-scheduler-resume]");
+  if (button)
+    action(async () => {
+      await api(`scheduler/${button.dataset.schedulerResume}/resume`, "POST");
+      await scheduler();
+      notice("已接回调度；原有预算与步骤计数继续保留");
+    });
+});
+$("persona-fields-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  action(async () => {
+    const content = {
+      ...personaContent,
+      name: $("persona-name").value,
+      identity: $("persona-identity").value,
+      style: $("persona-style").value,
+      interests: splitIds($("persona-interests").value),
+    };
+    fillPersona(
+      await api("config/persona", "PUT", {
+        expected_revision: revision,
+        content,
+      }),
+    );
+    notice("人格配置已保存，新活动将读取这个版本");
+  });
+});
 $("refresh").addEventListener("click", () => action(loadView));
 document.querySelectorAll("[data-action]").forEach((button) =>
   button.addEventListener("click", () =>
     action(async () => {
       await api(`lifecycle/${button.dataset.action}`, "POST");
-      await overview();
+      lifecycleView(await api("status"));
+      schedulerSummary(await api("scheduler"));
       notice("状态已更新");
     }),
   ),
@@ -381,7 +744,8 @@ $("sleep-form").addEventListener("submit", (e) => {
       latest_wake_at: wake,
       reason: "管理面板设置的休息计划",
     });
-    await overview();
+    lifecycleView(await api("status"));
+    schedulerSummary(await api("scheduler"));
     notice("睡眠计划已保存");
   });
 });
@@ -461,9 +825,8 @@ $("persona-form").addEventListener("submit", (e) => {
       expected_revision: revision,
       content,
     });
-    revision = saved.revision;
-    $("config-revision").textContent = `版本 ${revision}`;
-    notice("新版本已保存");
+    fillPersona(saved);
+    notice("人格完整配置已保存，新活动将读取这个版本");
   });
 });
 $("reload-persona").addEventListener("click", () => action(persona));

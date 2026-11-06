@@ -11,14 +11,17 @@ from mkbot.memory.contracts import MemorySettings
 from mkbot.memory.service import MemoryService
 from mkbot.models.contracts import GatewaySettings
 from mkbot.models.gateway import ModelGateway
+from mkbot.plugins.life import life_plugin
 from mkbot.plugins.memory import memory_plugin
 from mkbot.plugins.notebook import notebook_plugin
 from mkbot.plugins.registry import PluginRegistry
 from mkbot.runtime.activities import ActivityService
 from mkbot.runtime.agent import AgentLoop, ExecutionSettings
 from mkbot.runtime.clock import Clock, SystemClock
+from mkbot.runtime.coordinator import Coordinator
 from mkbot.runtime.inbox import InboxService
 from mkbot.runtime.lifecycle import Lifecycle
+from mkbot.runtime.scheduling import SchedulerSettings
 from mkbot.storage.config import ConfigStore
 from mkbot.storage.database import Database
 from mkbot.storage.instance_lock import InstanceLock
@@ -27,6 +30,8 @@ from mkbot.storage.instance_lock import InstanceLock
 class Kernel:
     def __init__(self, data_dir: Path, clock: Clock | None = None) -> None:
         self.clock = clock or SystemClock()
+        self._changed = asyncio.Event()
+        self._stopped = False
         self.instance_lock = InstanceLock(data_dir / "instance.lock")
         self.instance_lock.acquire()
         try:
@@ -34,6 +39,7 @@ class Kernel:
             self.lifecycle = Lifecycle(self.db, self.clock)
             self.activities = ActivityService(self.lifecycle)
             self.inbox = InboxService(self.lifecycle)
+            self.inbox.on_change = self.notify
             self.outbox = Outbox(self.lifecycle)
             self.budgets = BudgetManager(self.db, self.clock)
             self.config = ConfigStore(self.db, self.clock)
@@ -63,39 +69,40 @@ class Kernel:
                 self.config.get("memory")
             except NotFound:
                 self.config.put("memory", MemorySettings().model_dump(mode="json"), 0)
+            try:
+                self.config.get("scheduler")
+            except NotFound:
+                self.config.put("scheduler", SchedulerSettings().model_dump(mode="json"), 0)
             self.memory = MemoryService(self.lifecycle, self.config)
             self.models = ModelGateway(self.lifecycle, self.config, self.budgets)
-            self.models.context_validator = self.memory.assert_context
+            self.models.context_validator = self.assert_context
             self.plugins = PluginRegistry(self.lifecycle, self.models)
             self.plugins.memory = self.memory
+            self.plugins.context_validator = self.assert_context
             self.plugins.register(notebook_plugin())
             self.plugins.register(memory_plugin())
-            self.outbox.context_validator = self.memory.assert_context
+            self.outbox.context_validator = self.assert_context
             self.outbox.context_provider = self.memory.references
             self.outbox.on_sent = self.memory.commit_uses
             self.agent = AgentLoop(self)
+            self.scheduler = Coordinator(self)
+            self.plugins.register(life_plugin(self.scheduler))
         except BaseException:
             if hasattr(self, "db"):
                 self.db.close()
             self.instance_lock.release()
             raise
-        self._changed = asyncio.Event()
-        self._stopped = False
+
+    def assert_context(self, activity_id: str, refs: list[dict] | None = None) -> None:
+        self.memory.assert_context(activity_id, refs)
+        self.scheduler.assert_context(activity_id)
 
     def notify(self) -> None:
         self._changed.set()
 
     async def run_timers(self) -> None:
-        """只在状态改变或唤醒时间到达时工作，没有模型轮询。"""
-        while not self._stopped:
-            self._changed.clear()
-            self.lifecycle.tick()
-            due = self.lifecycle.next_wake_at()
-            timeout = max(0.001, (due - self.clock.now()).total_seconds()) if due else None
-            try:
-                await asyncio.wait_for(self._changed.wait(), timeout=timeout)
-            except TimeoutError:
-                continue
+        """兼容管理入口；统一由协调器等待来信、唤醒和持久期限。"""
+        await self.scheduler.run()
 
     def stop(self) -> None:
         self._stopped = True

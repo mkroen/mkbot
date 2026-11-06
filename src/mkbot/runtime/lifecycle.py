@@ -59,6 +59,14 @@ class Lifecycle:
             raise AdmissionDenied("正在收尾，暂不接取新的工作")
 
     def request_sleep(self, request: SleepRequest, *, fraction: float | None = None) -> dict:
+        with self.db.transaction() as tx:
+            self.request_sleep_in(tx, request, fraction=fraction)
+        return self.state()
+
+    def request_sleep_in(
+        self, tx: sqlite3.Connection, request: SleepRequest, *, fraction: float | None = None
+    ) -> None:
+        """作息变更和调用方的终止决定使用同一事务，重启不重复应用旧决定。"""
         now = self.clock.now()
         if request.earliest_wake_at <= now:
             raise ValueError("唤醒时间必须在未来")
@@ -68,18 +76,16 @@ class Lifecycle:
         duration = request.latest_wake_at - request.earliest_wake_at
         wake_at = request.earliest_wake_at + timedelta(seconds=duration.total_seconds() * fraction)
         plan = request.model_dump(mode="json") | {"selected_wake_at": timestamp(wake_at)}
-        with self.db.transaction() as tx:
-            state = tx.execute("SELECT * FROM characters WHERE id='main'").fetchone()
-            if state["paused"] or state["phase"] != Phase.AWAKE:
-                raise Conflict("仅清醒且未暂停时可以提出新的睡眠计划")
-            tx.execute(
-                "UPDATE characters SET phase=?,sleep_plan=?,wake_at=?,"
-                "version=version+1,updated_at=? WHERE id='main'",
-                (Phase.WINDING_DOWN, encode(plan), timestamp(wake_at), timestamp(now)),
-            )
-            audit(tx, "sleep.requested", "main", plan, timestamp(now))
-            self.try_sleep(tx)
-        return self.state()
+        state = tx.execute("SELECT * FROM characters WHERE id='main'").fetchone()
+        if state["paused"] or state["phase"] != Phase.AWAKE:
+            raise Conflict("仅清醒且未暂停时可以提出新的睡眠计划")
+        tx.execute(
+            "UPDATE characters SET phase=?,sleep_plan=?,wake_at=?,"
+            "version=version+1,updated_at=? WHERE id='main'",
+            (Phase.WINDING_DOWN, encode(plan), timestamp(wake_at), timestamp(now)),
+        )
+        audit(tx, "sleep.requested", "main", plan, timestamp(now))
+        self.try_sleep(tx)
 
     def try_sleep(self, tx: sqlite3.Connection) -> bool:
         state = tx.execute("SELECT * FROM characters WHERE id='main'").fetchone()
@@ -88,7 +94,8 @@ class Lifecycle:
         occupied = tx.execute(
             "SELECT (SELECT count(*) FROM work WHERE status IN ('running','unknown')) + "
             "(SELECT count(*) FROM activities WHERE status='running') + "
-            "(SELECT count(*) FROM deliveries WHERE status IN ('pending','sending','unknown'))"
+            "(SELECT count(*) FROM deliveries WHERE status IN "
+            "('pending','sending','unknown'))"
         ).fetchone()[0]
         if occupied:
             return False

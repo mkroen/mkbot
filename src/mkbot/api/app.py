@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import Field
 
 from mkbot import __version__
+from mkbot.accounting.statistics import overview
 from mkbot.domain.errors import AdmissionDenied, Conflict, MkbotError, NotFound
 from mkbot.domain.models import (
     ActivityRequest,
@@ -26,6 +27,7 @@ from mkbot.models.contracts import GatewaySettings
 from mkbot.runtime.agent import ExecutionSettings
 from mkbot.runtime.clock import Clock
 from mkbot.runtime.kernel import Kernel
+from mkbot.runtime.scheduling import SchedulerSettings
 
 
 class ConfigUpdate(StrictModel):
@@ -126,7 +128,8 @@ def create_app(data_dir: Path, token: str, *, clock: Clock | None = None) -> Fas
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; script-src 'self'; style-src 'self'; "
-            "img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+            "img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action "
+            "'self'"
         )
         return response
 
@@ -137,11 +140,26 @@ def create_app(data_dir: Path, token: str, *, clock: Clock | None = None) -> Fas
     @app.get("/api/status")
     async def status(k: KernelDependency):
         return k.lifecycle.state() | {
+            "app_version": __version__,
             "inbox_counts": k.db.rows("SELECT status,count(*) AS count FROM inbox GROUP BY status"),
             "activity_counts": k.db.rows(
                 "SELECT status,count(*) AS count FROM activities GROUP BY status"
             ),
         }
+
+    @app.get("/api/scheduler")
+    async def scheduler(k: KernelDependency):
+        return k.scheduler.state()
+
+    @app.get("/api/statistics")
+    async def statistics(k: KernelDependency, hours: int = Query(default=24)):
+        if hours not in (24, 168, 720):
+            raise ValueError("统计范围支持 24 小时、7 天或 30 天")
+        return overview(k.db, k.clock, hours)
+
+    @app.post("/api/scheduler/{activity_id}/resume")
+    async def resume_scheduled_activity(activity_id: str, k: KernelDependency):
+        return k.scheduler.resume(activity_id)
 
     @app.get("/api/inbox")
     async def inbox(k: KernelDependency):
@@ -156,6 +174,7 @@ def create_app(data_dir: Path, token: str, *, clock: Clock | None = None) -> Fas
     @app.post("/api/inbox/review")
     async def review(decision: ReviewDecision, k: KernelDependency):
         k.inbox.resolve(decision)
+        k.notify()
         return {"ok": True}
 
     @app.post("/api/lifecycle/sleep")
@@ -313,7 +332,13 @@ def create_app(data_dir: Path, token: str, *, clock: Clock | None = None) -> Fas
             )
         if name == "memory":
             request.content = MemorySettings.model_validate(request.content).model_dump(mode="json")
-        return k.config.put(name, request.content, request.expected_revision)
+        if name == "scheduler":
+            request.content = SchedulerSettings.model_validate(request.content).model_dump(
+                mode="json"
+            )
+        result = k.config.put(name, request.content, request.expected_revision)
+        k.notify()
+        return result
 
     @app.get("/api/model-calls")
     async def model_calls(k: KernelDependency):
