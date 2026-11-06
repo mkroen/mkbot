@@ -7,6 +7,9 @@ name = "mkbot"
 version = "0.1.0a1"
 description = "A persistent character runtime with accountable autonomous activities."
 readme = "README.md"
+license = "AGPL-3.0-only"
+license-files = ["LICENSE"]
+authors = [{ name = "mkroen" }]
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115,<1",
@@ -17,6 +20,11 @@ dependencies = [
 
 [project.scripts]
 mkbot = "mkbot.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/mkroen/mkbot"
+Repository = "https://github.com/mkroen/mkbot"
+Issues = "https://github.com/mkroen/mkbot/issues"
 
 [dependency-groups]
 dev = ["pytest>=8,<10", "pytest-asyncio>=0.24,<2", "ruff>=0.12,<1"]
