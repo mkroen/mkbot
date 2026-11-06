@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>mkbot · 角色管理</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <script defer src="/static/app.js"></script>
+  </head>
+  <body>
+    <section id="login" class="login-shell">
+      <form id="login-form" class="login-card">
+        <div class="brand-mark">m<span>k</span></div>
+        <p class="eyebrow">CHARACTER WORKSPACE</p>
+        <h1>欢迎回到 mkbot</h1>
+        <p class="muted">在这里照看角色的日常、经历与计划。</p>
+        <label for="token">管理令牌</label>
+        <input
+          id="token"
+          type="password"
+          autocomplete="current-password"
+          required
+          placeholder="输入本地实例的管理令牌"
+        />
+        <button class="primary" type="submit">进入工作台 <span>→</span></button>
+        <p id="login-error" class="error" role="alert"></p>
+      </form>
+    </section>
+    <div id="workspace" class="workspace" hidden>
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark small">m<span>k</span></div>
+          <strong>mkbot</strong><span class="alpha">alpha</span>
+        </div>
+        <p class="nav-label">角色工作台</p>
+        <nav aria-label="主导航">
+          <button data-view="overview" class="selected">
+            <span>◈</span>运行概览
+          </button>
+          <button data-view="activities"><span>▤</span>活动与计划</button>
+          <button data-view="inbox"><span>▱</span>留言收件箱</button>
+          <button data-view="persona"><span>◇</span>人格配置</button>
+          <button data-view="models"><span>◎</span>模型与路由</button>
+          <button data-view="plugins"><span>✧</span>能力插件</button>
+          <button data-view="usage"><span>▥</span>资源额度</button>
+          <button data-view="audit"><span>≋</span>运行记录</button>
+        </nav>
+        <div class="sidebar-bottom">
+          <span class="status-dot"></span>本地实例<button id="logout">
+            退出
+          </button>
+        </div>
+      </aside>
+      <main>
+        <header>
+          <div>
+            <p class="eyebrow">MKBOT WORKSPACE</p>
+            <h1 id="page-title">运行概览</h1>
+          </div>
+          <div class="header-actions">
+            <span id="updated" class="muted"></span
+            ><button id="refresh" class="outline">刷新</button>
+          </div>
+        </header>
+        <div id="notice" role="status" hidden></div>
+        <section id="overview" class="view">
+          <div class="hero">
+            <div>
+              <span id="phase-badge" class="badge">读取中</span>
+              <h2 id="phase-title">正在了解她的近况</h2>
+              <p id="phase-description">状态与任务从本地实例加载。</p>
+            </div>
+            <div class="orbit"><span>m</span><i></i></div>
+          </div>
+          <div class="metrics">
+            <article>
+              <p>待审阅留言</p>
+              <strong id="pending-count">0</strong
+              ><span>看过之后，自由决定回应</span>
+            </article>
+            <article>
+              <p>进行中的活动</p>
+              <strong id="running-count">0</strong
+              ><span>工作收尾后，才能安心休息</span>
+            </article>
+            <article>
+              <p>执行中 / 待核对</p>
+              <strong id="work-count">0</strong
+              ><span>保留每一次行动的真实结果</span>
+            </article>
+          </div>
+          <div class="grid-two">
+            <article class="panel">
+              <h3>作息与状态</h3>
+              <p id="wake-description" class="muted">目前没有唤醒计划</p>
+              <div class="button-row">
+                <button data-action="wake">唤醒</button
+                ><button data-action="awake">结束醒来整理</button
+                ><button data-action="pause">暂停运行</button
+                ><button data-action="resume">恢复运行</button>
+              </div>
+              <form id="sleep-form" class="compact-form">
+                <label for="wake-time">下次醒来时间</label
+                ><input id="wake-time" type="datetime-local" required /><button
+                  type="submit"
+                  class="primary"
+                >
+                  收尾后入睡
+                </button>
+              </form>
+            </article>
+            <article class="panel">
+              <h3>待核对工作</h3>
+              <div id="work-list" class="muted">没有未完成的工作。</div>
+            </article>
+          </div>
+        </section>
+        <section id="activities" class="view" hidden>
+          <article class="panel">
+            <h3>添加一个计划</h3>
+            <form id="activity-form" class="inline-form">
+              <input
+                id="goal"
+                required
+                placeholder="例如：继续完善昨天的漫画"
+              /><button class="primary" type="submit">保存计划</button>
+            </form>
+          </article>
+          <div id="activity-list"></div>
+        </section>
+        <section id="inbox" class="view" hidden>
+          <article class="panel">
+            <h3>本地收件测试</h3>
+            <p class="muted">消息会进入本地收件箱，便于观察睡眠与审阅状态。</p>
+            <form id="message-form" class="inline-form">
+              <input
+                id="conversation"
+                value="local:private:friend"
+                aria-label="测试会话"
+              /><input
+                id="message"
+                required
+                placeholder="留下一条消息"
+              /><button class="primary" type="submit">保存留言</button>
+            </form>
+          </article>
+          <div id="inbox-list"></div>
+        </section>
+        <section id="persona" class="view" hidden>
+          <article class="panel">
+            <div class="panel-heading">
+              <h3>人格与表达</h3>
+              <span id="config-revision" class="badge"></span>
+            </div>
+            <p class="muted">
+              编辑完整配置。每次保存建立新版本，避免覆盖其他位置的修改。
+            </p>
+            <form id="persona-form">
+              <label for="persona-json">配置内容</label
+              ><textarea
+                id="persona-json"
+                spellcheck="false"
+                rows="16"
+              ></textarea>
+              <div class="button-row">
+                <button class="primary" type="submit">保存新版本</button
+                ><button id="reload-persona" type="button">重新读取</button>
+              </div>
+            </form>
+          </article>
+        </section>
+        <section id="models" class="view" hidden>
+          <article class="panel">
+            <div class="panel-heading">
+              <h3>统一模型配置</h3>
+              <span id="models-revision" class="badge"></span>
+            </div>
+            <p class="muted">
+              设置服务地址、用途、主备用顺序、价格与调用预算。密钥填写环境变量名；保存后下一次新请求使用新配置。
+            </p>
+            <form id="models-form">
+              <label for="models-json">路由配置</label
+              ><textarea
+                id="models-json"
+                spellcheck="false"
+                rows="22"
+              ></textarea>
+              <div class="button-row">
+                <button class="primary" type="submit">保存模型配置</button
+                ><button id="reload-models" type="button">重新读取模型</button>
+              </div>
+            </form>
+          </article>
+          <article class="panel">
+            <h3>最近模型调用</h3>
+            <div id="model-call-list"></div>
+          </article>
+        </section>
+        <section id="plugins" class="view" hidden>
+          <div id="plugin-list"></div>
+        </section>
+        <section id="usage" class="view" hidden>
+          <article class="panel">
+            <h3>资源额度</h3>
+            <p class="muted">
+              已结算用量与仍被占用的预留额度分别显示。micro_usd 每 1,000,000
+              单位为 1 美元；model_attempts 记录尝试次数。
+            </p>
+            <div id="usage-list"></div>
+          </article>
+        </section>
+        <section id="audit" class="view" hidden>
+          <article class="panel">
+            <h3>角色运行时间线</h3>
+            <div id="audit-list"></div>
+          </article>
+        </section>
+        <footer>
+          mkbot <span>持续的经历 · 自主的选择 · 可追溯的行动</span>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>

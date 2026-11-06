@@ -1,0 +1,13 @@
+.venv/
+.cache/
+.data/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+*.sqlite3*
+.env
+.env.*
+admin-token
+instance.lock

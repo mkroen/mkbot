@@ -1,0 +1,29 @@
+{
+  "providers": {
+    "primary": {
+      "base_url": "https://your-provider.example/v1",
+      "api_key_env": "MKBOT_MODEL_KEY",
+      "token_limit_field": "max_tokens"
+    }
+  },
+  "roles": {
+    "planner": [
+      {
+        "provider": "primary",
+        "model": "YOUR_MODEL_ID",
+        "prices": {
+          "input_usd_per_million": "1",
+          "output_usd_per_million": "2"
+        }
+      }
+    ]
+  },
+  "max_attempts": 3,
+  "timeout_seconds": 180,
+  "max_concurrency": 1,
+  "daily_limit_micro_usd": 1000000,
+  "root_limit_micro_usd": 100000,
+  "root_call_limit": 12,
+  "circuit_threshold": 3,
+  "circuit_cooldown_seconds": 60
+}
